@@ -1,0 +1,9 @@
+.*.swp
+*.glob
+*.vo
+.*.aux
+*~
+\#*\#
+.lia.cache
+.nia.cache
+
