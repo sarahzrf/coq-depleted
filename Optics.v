@@ -1,6 +1,14 @@
 From Coq Require Import ssreflect ssrfun ssrbool.
 Require Import stdpp.tactics.
+Require Import stdpp.finite.
+Require Import stdpp.list.
 
+
+Declare Scope proset_scope.
+Declare Scope proset_util_scope.
+Local Open Scope proset_scope.
+Local Open Scope proset_util_scope.
+(* Local Set Universe Polymorphism. *)
 
 Class Proset (X : Type) := {pro_le : X -> X -> Prop; pro_pro :> PreOrder pro_le}.
 Hint Mode Proset ! : typeclass_instances.
@@ -65,6 +73,35 @@ Proof. firstorder. Qed.
 Instance prod_proset `{Proset X, Proset Y} : Proset (X * Y) :=
   {| pro_le := prod_relation pro_le pro_le |}.
 
+Class Functor `{Proset X, Proset Y} (F : X -> Y) :=
+  fmap' : forall {A B}, A ⊢ B -> F A ⊢ F B.
+Hint Mode Functor ! - ! - ! : typeclass_instances.
+Class Full `{Proset X, Proset Y} (F : X -> Y) :=
+  unfmap : forall {A B}, F A ⊢ F B -> A ⊢ B.
+Hint Mode Full ! - ! - ! : typeclass_instances.
+(* TODO Double-check this definition. *)
+
+Lemma unfmap_fmap : forall `{Proset X, Proset Y} {F : X -> Y} `{!Functor F, !Full F} {A B},
+    F A ⊢ F B <-> A ⊢ B.
+Proof. split; [apply: unfmap | apply: fmap']. Qed.
+Lemma fmap_core : forall `{Functor X Y F} {A B}, A ⟛ B -> F A ⟛ F B.
+Proof. firstorder. Qed.
+Lemma unfmap_core : forall `{Full X Y F} {A B}, F A ⟛ F B -> A ⟛ B.
+Proof. firstorder. Qed.
+Instance functor_proper `{Functor X Y F} : Proper (pro_le ++> pro_le) F.
+Proof. move=> ? ?; apply: fmap'. Qed.
+Instance functor_proper' `{Functor X Y F} : Proper (pro_le --> flip pro_le) F.
+Proof. move=> ? ?; apply: fmap'. Qed.
+Instance functor_proper_core `{Functor X Y F} : Proper (core pro_le ==> core pro_le) F.
+Proof. move=> ? ? [? ?]; split; by apply fmap'. Qed.
+Instance functor_proper_core' `{Functor X Y F} : Proper (core pro_le --> core pro_le) F.
+Proof. move=> ? ? [? ?]; split; by apply fmap'. Qed.
+(* TODO This should probably be falling out of functor_proper...
+Instance compose_proper `{Proset X, Proset Y, Proset Z}
+  : Proper (pro_le ++> pro_le ++> pro_le) (@compose X Y Z).
+Proof. move=> F F' E1 G G' E2 A /=. setoid_rewrite E1. setoid_rewrite E2.  ? ? ? ? ? ? ? /=. firstorder. Qed.
+*)
+
 Class Monoidal {X} (R : X -> X -> Prop) (T : X -> X -> X) (U : X) :=
   {bimap : forall {A A' B B'}, R A A' -> R B B' -> R (T A B) (T A' B');
    lunit : forall A, core R (T U A) A;
@@ -84,7 +121,7 @@ Definition pro_runit `{MonSet X} (A : X) : A ⊗ memp ⟛ A := runit A.
 Definition pro_massoc `{MonSet X} (A B C : X) : A ⊗ (B ⊗ C) ⟛ (A ⊗ B) ⊗ C
   := massoc A B C.
 Class SymMonSet (X : Type) `{MonSet X} :=
-  {pro_sym :> Sym pro_le pro_tens}.
+  {pro_sym :> Sym (X:=X) pro_le pro_tens}.
 Hint Mode SymMonSet ! - - : typeclass_instances.
 Definition pro_sym' `{SymMonSet X} (A B : X) : A ⊗ B ⟛ B ⊗ A :=
   conj (pro_sym A B) (pro_sym B A).
@@ -95,27 +132,27 @@ Instance pro_op_monoidal `{Monoidal X R T U} : Monoidal (pro_op R) (tens_op T) (
 Proof.
   constructor.
   all: rewrite /pro_op /core /= => *; rewrite -/(core R _ _).
-  - by apply: bimap.
+  - by eapply bimap.
   - symmetry; apply: lunit.
   - symmetry; apply: runit.
   - symmetry; apply: massoc.
 Qed.
 Instance pro_op_sym `{Sym X R T} : Sym (pro_op R) (tens_op T).
-Proof. move=> [A] [B] /=; apply: sym. Qed.
+Proof. move=> [A] [B] /=; apply sym. Qed.
 Instance op_mset `{MonSet X} : MonSet (op X) := {| pro_tens := tens_op pro_tens |}.
 Instance op_smset `{SymMonSet X} : SymMonSet (op X) := {}.
 Instance pw_monoidal {Y} `{Monoidal X R T U} :
   Monoidal (pointwise_relation Y R) (fun f g y => T (f y) (g y)) (const U).
 Proof.
   constructor.
-  - move=> A A' B B' D1 D2 y; apply: bimap; [apply: D1 | apply: D2].
+  - move=> A A' B B' D1 D2 y; apply bimap; [apply: D1 | apply: D2].
   - move=> A; apply/pw_core0 => y; apply: lunit.
   - move=> A; apply/pw_core0 => y; apply: runit.
   - move=> A B C; apply/pw_core0 => y; apply: massoc.
 Qed.
 Instance pw_sym {Y} `{Sym X R T}
   : Sym (pointwise_relation Y R) (fun f g y => T (f y) (g y)).
-Proof. move=> A B y; apply: sym. Qed.
+Proof. move=> A B y; apply sym. Qed.
 Instance pw_mset {Y} `{MonSet X} : MonSet (Y -> X) :=
   {| pro_tens := fun f g y => f y ⊗ g y |}.
 Instance pw_smset {Y} `{SymMonSet X} : SymMonSet (Y -> X) := {}.
@@ -131,27 +168,6 @@ Instance prod_mset `{MonSet X, MonSet Y} : MonSet (X * Y)
   := {| pro_tens := tens_prod pro_tens pro_tens |}.
 Instance prod_smset `{SymMonSet X, SymMonSet Y} : SymMonSet (X * Y) := {}.
 
-Polymorphic Instance prop_proset : Proset Prop := {| pro_le := impl |}.
-Proof. firstorder. Defined.
-Polymorphic Instance and_monoidal : Monoidal pro_le and True.
-Proof. firstorder. Qed.
-Polymorphic Instance or_monoidal : Monoidal pro_le or False.
-Proof. firstorder. Qed.
-Polymorphic Instance and_sym : Sym pro_le and.
-Proof. firstorder. Qed.
-Polymorphic Instance or_sym : Sym pro_le or.
-Proof. firstorder. Qed.
-Polymorphic Instance prop_mset : MonSet Prop
-  := {| pro_tens := and |}.
-Polymorphic Instance prop_smset : SymMonSet Prop := {}.
-
-Class Functor `{Proset X, Proset Y} (F : X -> Y) :=
-  fmap' : forall {A B}, A ⊢ B -> F A ⊢ F B.
-Hint Mode Functor ! - ! - ! : typeclass_instances.
-Class Full `{Proset X, Proset Y} (F : X -> Y) :=
-  unfmap : forall {A B}, F A ⊢ F B -> A ⊢ B.
-Hint Mode Full ! - ! - ! : typeclass_instances.
-(* TODO Double-check this definition. *)
 Class LaxMon `{MonSet X, MonSet Y} (F : X -> Y) :=
   {pres_memp : memp ⊢ F memp; pres_tens : forall {A B}, F A ⊗ F B ⊢ F (A ⊗ B)}.
 Hint Mode LaxMon ! - - ! - - ! : typeclass_instances.
@@ -163,738 +179,80 @@ Class StrongMon `{MonSet X, MonSet Y} (F : X -> Y) :=
   {strong_lax :> LaxMon F; strong_oplax :> OplaxMon F}.
 Hint Mode StrongMon ! - - ! - - ! : typeclass_instances.
 
-Lemma unfmap_fmap : forall `{Proset X, Proset Y} {F : X -> Y} `{!Functor F, !Full F} {A B},
-    F A ⊢ F B <-> A ⊢ B.
-Proof. split; [apply: unfmap | apply: fmap']. Qed.
-Lemma fmap_core : forall `{Functor X Y F} {A B}, A ⟛ B -> F A ⟛ F B.
-Proof. firstorder. Qed.
-Lemma unfmap_core : forall `{Full X Y F} {A B}, F A ⟛ F B -> A ⟛ B.
-Proof. firstorder. Qed.
-Instance functor_proper `{Functor X Y F} : Proper (pro_le ++> pro_le) F.
-Proof. move=> ? ?; apply: fmap'. Qed.
-Instance functor_proper' `{Functor X Y F} : Proper (pro_le --> flip pro_le) F.
-Proof. move=> ? ?; apply: fmap'. Qed.
-Instance functor_proper_core `{Functor X Y F} : Proper (core pro_le ==> core pro_le) F.
-Proof. move=> ? ? [? ?]; split; by apply fmap'. Qed.
-Instance functor_proper_core' `{Functor X Y F} : Proper (core pro_le --> core pro_le) F.
-Proof. move=> ? ? [? ?]; split; by apply fmap'. Qed.
 Instance monoidal_proper `{Monoidal X R T} : Proper (R ++> R ++> R) T.
-Proof. move=> ? ? ? ? ? ?; by apply: bimap. Qed.
+Proof. move=> ? ? ? ? ? ?; by apply bimap. Qed.
 Instance monoidal_proper' `{Monoidal X R T} : Proper (R --> R --> flip R) T.
-Proof. move=> ? ? ? ? ? ? /=; by apply: bimap. Qed.
+Proof. move=> ? ? ? ? ? ? /=; by apply bimap. Qed.
 Instance monoidal_proper_core `{Monoidal X R T} : Proper (core R ==> core R ==> core R) T.
 Proof. firstorder. Qed.
-(* TODO This should probably be falling out of functor_proper...
-Instance compose_proper `{Proset X, Proset Y, Proset Z}
-  : Proper (pro_le ++> pro_le ++> pro_le) (@compose X Y Z).
-Proof. move=> F F' E1 G G' E2 A /=. setoid_rewrite E1. setoid_rewrite E2.  ? ? ? ? ? ? ? /=. firstorder. Qed.
-*)
 
-Definition cone `{Proset X} {R} (A : X) (J : R -> X) : Prop :=
-  forall x, A ⊢ J x.
-Definition lim_cone `{Proset X} {R} (A : X) (J : R -> X) : Prop :=
-  cone A J /\ forall A', cone A' J -> A' ⊢ A.
-Definition cocone `{Proset X} {R} (J : R -> X) (A : X) : Prop :=
-  forall x, J x ⊢ A.
-Definition colim_cocone `{Proset X} {R} (J : R -> X) (A : X) : Prop :=
-  cocone J A /\ forall A', cocone J A' -> A ⊢ A'.
-Lemma lim_unique : forall `{Proset X} {R} {A A'} {J : R -> X},
-    lim_cone A J -> lim_cone A' J <-> A ⟛ A'.
-Proof.
-  move=> X Pr_X R A A' J LC; split; first by firstorder.
-  move: LC => [C U] [H1 H2]; split=> [r | A'' C'].
-  - by etransitivity.
-  - setoid_rewrite <- H1; firstorder.
-Qed.
-Lemma colim_unique : forall `{Proset X} {R} {J : R -> X} {A A'},
-    colim_cocone J A -> colim_cocone J A' <-> A ⟛ A'.
-Proof.
-  move=> X Pr_X R J A A' LC; split; first by firstorder.
-  move: LC => [C U] [H1 H2]; split=> [r | A'' C'].
-  - setoid_rewrite <- H1; firstorder.
-  - setoid_rewrite H2; firstorder.
-Qed.
+Instance void_proset : Proset void := {| pro_le _ _ := True |}.
+Instance void_functor `{Proset X} {F : void -> X} : Functor F | 3.
+Proof. move=> []. Qed.
 
-Class Bicomplete (X : Type) `{Proset X} :=
-  {lim R (J : R -> X) : X;
-   is_lim : forall {R} J, lim_cone (lim R J) J;
-   colim R (J : R -> X) : X;
-   is_colim : forall {R} J, colim_cocone J (colim R J)}.
-Hint Mode Bicomplete ! - : typeclass_instances.
-Arguments lim {_ _ _ _} _.
-Arguments colim {_ _ _ _} _.
-
-(* TODO Lots of stuff! *)
-Definition lim_left `{Bicomplete X} {R} (J : R -> X) : cone (lim J) J
-  := proj1 (is_lim J).
-Definition lim_right `{Bicomplete X} {R} (A : X) (J : R -> X) (C : cone A J)
-  : A ⊢ lim J
-  := proj2 (is_lim J) A C.
-Lemma lim_universal : forall `{Bicomplete X} {R} (A : X) (J : R -> X),
-    cone A J <-> A ⊢ lim J.
-Proof.
-  move=> X Pr Comp R A J; split; first by apply: lim_right.
-  move=> D r; etransitivity; [eassumption | apply: lim_left].
-Qed.
-Definition colim_right `{Bicomplete X} {R} (J : R -> X) : cocone J (colim J)
-  := proj1 (is_colim J).
-Definition colim_left `{Bicomplete X} {R} (A : X) (J : R -> X) (C : cocone J A)
-  : colim J ⊢ A
-  := proj2 (is_colim J) A C.
-Lemma colim_universal : forall `{Bicomplete X} {R} (J : R -> X) (A : X),
-    cocone J A <-> colim J ⊢ A.
-Proof.
-  move=> X Pr Cocomp R J A; split; first by apply: colim_left.
-  move=> D r; etransitivity; [apply: colim_right | eassumption].
-Qed.
-
-(* This could probably follow by some abstract nonsense if we moved it *after*
-   presheaf stuff... Hmm. Oh well. *)
-Definition colim_from_lim `{Proset X} (lim' : forall {R} (J : R -> X), X) {R} (J : R -> X) : X
-  := lim' (fun A : sig (cocone J) => `A).
-Definition lim_from_colim `{Proset X} (colim' : forall {R} (J : R -> X), X) {R} (J : R -> X) : X
-  := colim' (fun A : sig (fun A0 => cone A0 J) => `A).
-Program Definition complete_sufficient `{Proset X} (lim' : forall R, (R -> X) -> X)
-        (is_lim' : forall R (J : R -> X), lim_cone (lim' R J) J) : Bicomplete X
-  := {| lim := lim'; is_lim := is_lim'; colim R := colim_from_lim lim' |}.
-Next Obligation.
-  move=> X Pr lim' is_lim' R J; split=> [r | A Cocone].
-  - apply/(proj2 (is_lim' _ _)) => -[A Cocone] //=.
-  - change A with (sval ((A ↾ Cocone) : sig (cocone J))).
-    apply: (proj1 (is_lim' _ _)).
-Qed.
-Program Definition cocomplete_sufficient `{Proset X} (colim' : forall R, (R -> X) -> X)
-        (is_colim' : forall R (J : R -> X), colim_cocone J (colim' R J)) : Bicomplete X
-  := {| lim R := lim_from_colim colim'; colim := colim'; is_colim := is_colim' |}.
-Next Obligation.
-  move=> X Pr colim' is_colim' R J; split=> [r | A Cone].
-  - apply/(proj2 (is_colim' _ _)) => -[A Cone] //=.
-  - change A with (sval ((A ↾ Cone) : sig (fun A0 => cone A0 J))).
-    apply: (proj1 (is_colim' _ _)).
-Qed.
-
-Lemma lim_unique' : forall `{Bicomplete X} {R} {A} {J : R -> X},
-    lim_cone A J <-> A ⟛ lim J.
-Proof.
-  move=> ? ? ? ? ? J; generalize (is_lim J).
-  rewrite (symmetry_iff (core _)); apply: lim_unique.
-Qed.
-Lemma colim_unique' : forall `{Bicomplete X} {R} {J : R -> X} {A},
-    colim_cocone J A <-> A ⟛ colim J.
-Proof.
-  move=> ? ? ? ? J ?; generalize (is_colim J).
-  rewrite (symmetry_iff (core _)); apply: colim_unique.
-Qed.
-
-Polymorphic Instance prop_bicomplete : Bicomplete Prop := {| lim := all; colim := ex |}.
-Proof.
-  - firstorder.
-  - move=> R J; firstorder.
-Defined.
-Program Instance pw_bicomplete `{Bicomplete X} {Y} : Bicomplete (Y -> X)
-  := {| lim R J y := lim (fun r => J r y); colim R J y := colim (fun r => J r y) |}.
-Next Obligation.
-  move=> X Pr Comp Y R J; split=> [r | A' Cone] y.
-  - apply: lim_left.
-  - apply: lim_right; firstorder.
-Qed.
-Next Obligation.
-  move=> X Pr Comp Y R J; split=> [r | A' Cone] y.
-  - apply: colim_right.
-  - apply: colim_left; firstorder.
-Qed.
-Program Instance op_bicomplete `{Bicomplete X} : Bicomplete (op X)
-  := {| lim R J := Op (colim (get_op ∘ J)); colim R J := Op (lim (get_op ∘ J)) |}.
-Next Obligation.
-  move=> X Pr Comp R J; split=> [r | [A'] Cone] /=.
-  - replace (J r) with (Op (get_op (J r))) by by case: J.
-    apply: (colim_right (get_op ∘ J)).
-  - apply: colim_left; firstorder.
-Qed.
-Next Obligation.
-  move=> X Pr Comp R J; split=> [r | [A'] Cone] /=.
-  - replace (J r) with (Op (get_op (J r))) by by case: J.
-    apply: (lim_left (get_op ∘ J)).
-  - apply: lim_right; firstorder.
-Qed.
-Lemma curry_dep : forall {A B} {P : A * B -> Prop}, (forall p, P p) <-> (forall a b, P (a, b)).
-Proof. move=> A B P; split=> [H a b | H [a b]] //. Qed.
-Lemma uncurry_dep : forall {A B} {P : A -> B -> Prop}, (forall a b, P a b) <-> (forall p, P p.1 p.2).
-Proof. move=> A B P; split=> [H p | H a b] //; apply: (H (a, b)). Qed.
-Lemma prod_cone : forall `{Proset X, Proset Y} {R} {p} {J : R -> X * Y},
-    cone p J <-> cone p.1 (fst ∘ J) /\ cone p.2 (snd ∘ J).
+Program Instance prop_proset : Proset Prop := {| pro_le := impl |}.
+Next Obligation. firstorder. Qed.
+Instance and_monoidal : Monoidal pro_le and True.
 Proof. firstorder. Qed.
-Lemma prod_cocone : forall `{Proset X, Proset Y} {R} {J : R -> X * Y} {p},
-    cocone J p <-> cocone (fst ∘ J) p.1 /\ cocone (snd ∘ J) p.2.
+Instance or_monoidal : Monoidal pro_le or False.
 Proof. firstorder. Qed.
-Lemma prod_lim_cone : forall `{Proset X, Proset Y} {R} {p} {J : R -> X * Y},
-    lim_cone p J <-> lim_cone p.1 (fst ∘ J) /\ lim_cone p.2 (snd ∘ J).
-Proof.
-  move=> X Pr_X Y Pr_Y R [A B] J /=.
-  rewrite /lim_cone curry_dep /=; setoid_rewrite (prod_cone (J:=J)); firstorder.
-Qed.
-Lemma prod_colim_cocone : forall `{Proset X, Proset Y} {R} {J : R -> X * Y} {p},
-    colim_cocone J p <-> colim_cocone (fst ∘ J) p.1 /\ colim_cocone (snd ∘ J) p.2.
-Proof.
-  move=> X Pr_X Y Pr_Y R J [A B] /=.
-  rewrite /colim_cocone curry_dep /=; setoid_rewrite (prod_cocone (J:=J)); firstorder.
-Qed.
-Program Instance prod_bicomplete `{Bicomplete X, Bicomplete Y} : Bicomplete (X * Y)
-  := {| lim R J := (lim (fst ∘ J), lim (snd ∘ J));
-        colim R J := (colim (fst ∘ J), colim (snd ∘ J)) |}.
-Next Obligation.
-  move=> X Pr_X Comp_X Y Pr_Y Comp_Y R J /=.
-  rewrite prod_lim_cone /=; split; apply: is_lim.
-Qed.
-Next Obligation.
-  move=> X Pr_X Comp_X Y Pr_Y Comp_Y R J /=.
-  rewrite prod_colim_cocone /=; split; apply: is_colim.
-Qed.
-(*
-Lemma op_cone_cocone : forall `{Proset X} {R},
-*)
+Instance and_sym : Sym pro_le and.
+Proof. firstorder. Qed.
+Instance or_sym : Sym pro_le or.
+Proof. firstorder. Qed.
+Instance prop_mset : MonSet Prop
+  := {| pro_tens := and |}.
+Instance prop_smset : SymMonSet Prop := {}.
 
-Definition terminal (X : Type) `{Bicomplete X} : X :=
-  lim (fun H : Empty_set => match H with end).
-Definition initial (X : Type) `{Bicomplete X} : X :=
-  colim (fun H : Empty_set => match H with end).
-Notation "⊤" := (terminal _) : proset_scope.
-Notation "⊥" := (initial _) : proset_scope.
-Definition product `{Bicomplete X} (A B : X) : X :=
-  lim (fun b : bool => if b then A else B).
-Definition coproduct `{Bicomplete X} (A B : X) : X :=
-  colim (fun b : bool => if b then A else B).
-Infix "×" := product (at level 40, left associativity) : proset_scope.
-Infix "+" := coproduct (at level 50, left associativity) : proset_scope.
-Definition embed_prop `{Bicomplete X} (P : Prop) : X := colim (fun H : P => ⊤).
-Arguments terminal : simpl never.
-Arguments initial : simpl never.
-Arguments product : simpl never.
-Arguments coproduct : simpl never.
-Arguments embed_prop : simpl never.
+Instance nat_proset : Proset nat := {| pro_le := le |}.
+Instance plus_monoidal : Monoidal pro_le plus 0.
+Proof. constructor=> *; compute -[plus] in *; lia. Qed.
+Instance plus_sym : Sym pro_le plus.
+Proof. compute -[plus] => *; lia. Qed.
+Instance nat_mset : MonSet nat := {| pro_tens := plus |}.
+Instance nat_smset : SymMonSet nat := {}.
+Lemma nat_functor : forall `{Proset X} {F : nat -> X},
+    (forall n, F n ⊢ F (S n)) -> Functor F.
+Proof. move=> X ? F Step n m; elim: m / => //=; by etransitivity. Qed.
 
-Definition terminal_right `{Bicomplete X} {A : X} : A ⊢ ⊤ :=
-  lim_right _ _ (fun e : Empty_set => match e with end).
-Definition initial_left `{Bicomplete X} {A : X} : ⊥ ⊢ A :=
-  colim_left _ _ (fun e : Empty_set => match e with end).
-Definition product_left1 `{Bicomplete X} {A B : X} : A × B ⊢ A
-  := lim_left _ true.
-Definition product_left2 `{Bicomplete X} {A B : X} : A × B ⊢ B
-  := lim_left _ false.
-Definition product_right `{Bicomplete X} {C A B : X} (D1 : C ⊢ A) (D2 : C ⊢ B)
-  : C ⊢ A × B
-  := lim_right _ _ (fun b => if b as b0 return C ⊢ (if b0 then A else B) then D1 else D2).
-Definition coproduct_left `{Bicomplete X} {A B C : X} (D1 : A ⊢ C) (D2 : B ⊢ C)
-  : coproduct A B ⊢ C
-  := colim_left _ _ (fun b => if b as b0 return (if b0 then A else B) ⊢ C then D1 else D2).
-Definition coproduct_right1 `{Bicomplete X} {A B : X} : A ⊢ coproduct A B
-  := colim_right _ true.
-Definition coproduct_right2 `{Bicomplete X} {A B : X} : B ⊢ coproduct A B
-  := colim_right _ false.
-Lemma embed_prop_left : forall `{Bicomplete X} {P : Prop} {Q : X},
-    (P -> ⊤ ⊢ Q) -> embed_prop P ⊢ Q.
-Proof. move=> X Pr Comp P Q D; by apply: colim_left. Qed.
-(* TODO Put this in the right place *)
-Lemma embed_prop_right : forall `{Bicomplete X} {P : X} {Q : Prop},
-    Q -> P ⊢ embed_prop Q.
-Proof.
-  move=> X Pr Comp P Q H.
-  setoid_rewrite <- colim_right.
-  - apply: terminal_right.
-  - done.
-Qed.
-
-Instance cartesian_monoidal `{Bicomplete X} : Monoidal (pro_le (X:=X)) product ⊤.
-Proof.
-  constructor.
-  - move=> A A' B B' D1 D2; apply/product_right.
-    + by setoid_rewrite product_left1.
-    + by setoid_rewrite product_left2.
-  - move=> A; split.
-    + apply/product_left2.
-    + apply/product_right; [apply/terminal_right | done].
-  - move=> A; split.
-    + apply/product_left1.
-    + apply/product_right; [done | apply/terminal_right].
-  - split; repeat apply/product_right.
-    + apply/product_left1.
-    + setoid_rewrite product_left2; apply/product_left1.
-    + setoid_rewrite product_left2; apply/product_left2.
-    + setoid_rewrite product_left1; apply/product_left1.
-    + setoid_rewrite product_left1; apply/product_left2.
-    + apply/product_left2.
-Qed.
-Instance cocartesian_monoidal `{Bicomplete X} : Monoidal (pro_le (X:=X)) coproduct ⊥.
-Proof.
-  constructor.
-  - move=> A A' B B' D1 D2; apply/coproduct_left.
-    + by setoid_rewrite <- coproduct_right1.
-    + by setoid_rewrite <- coproduct_right2.
-  - move=> A; split.
-    + apply/coproduct_left; [apply/initial_left | done].
-    + apply/coproduct_right2.
-  - move=> A; split.
-    + apply/coproduct_left; [done | apply/initial_left].
-    + apply/coproduct_right1.
-  - split; repeat apply/coproduct_left.
-    + setoid_rewrite <- coproduct_right1; apply/coproduct_right1.
-    + setoid_rewrite <- coproduct_right1; apply/coproduct_right2.
-    + apply/coproduct_right2.
-    + apply/coproduct_right1.
-    + setoid_rewrite <- coproduct_right2; apply/coproduct_right1.
-    + setoid_rewrite <- coproduct_right2; apply/coproduct_right2.
-Qed.
-Instance cartesian_sym `{Bicomplete X} : Sym (pro_le (X:=X)) product.
-Proof. move=> A B; apply/product_right; [apply/product_left2 | apply/product_left1]. Qed.
-Instance cocartesian_sym `{Bicomplete X} : Sym (pro_le (X:=X)) coproduct.
-Proof.
-  move=> A B; apply/coproduct_left; [apply/coproduct_right2 | apply/coproduct_right1].
-Qed.
-
-Class Continuous `{Proset X, Proset Y} (F : X -> Y) :=
-  distrib_lim_cone : forall {R} A (J : R -> X), lim_cone A J -> lim_cone (F A) (F ∘ J).
-Class Cocontinuous `{Proset X, Proset Y} (F : X -> Y) :=
-  distrib_colim_cocone :
-    forall {R} (J : R -> X) A, colim_cocone J A -> colim_cocone (F ∘ J) (F A).
-Hint Mode Continuous ! - ! - ! : typeclass_instances.
-Hint Mode Cocontinuous ! - ! - ! : typeclass_instances.
-Lemma create_lim_cone : forall `{Bicomplete X, Proset Y} {F : X -> Y} `{!Continuous F}
-                          {R} (J : R -> X),
-    lim_cone (F (lim J)) (F ∘ J).
-Proof. move=> *; apply: distrib_lim_cone; apply: is_lim. Qed.
-Lemma distrib_lim : forall `{Bicomplete X, Bicomplete Y} {F : X -> Y} `{!Continuous F}
-                      {R} (J : R -> X),
-    F (lim J) ⟛ lim (F ∘ J).
-Proof. move=> *; apply/lim_unique'/create_lim_cone. Qed.
-Lemma distrib_lim_sufficient : forall `{Bicomplete X, Bicomplete Y} {F : X -> Y} `{!Functor F},
-    (forall {R} (J : R -> X), lim (F ∘ J) ⊢ F (lim J)) -> Continuous F.
-Proof.
-  move=> X Pr_X Comp_X Y Pr_Y Comp_Y F Funct_F Distr R A J /lim_unique' E.
-  apply/lim_unique'; rewrite E; split.
-  - apply/lim_right => r /=; apply/fmap'/lim_left.
-  - apply/Distr.
-Qed.
-Lemma create_colim_cocone : forall `{Bicomplete X, Proset Y} {F : X -> Y} `{!Cocontinuous F}
-                              {R} (J : R -> X),
-    colim_cocone (F ∘ J) (F (colim J)).
-Proof. move=> *; apply: distrib_colim_cocone; apply: is_colim. Qed.
-Lemma distrib_colim : forall `{Bicomplete X, Bicomplete Y} {F : X -> Y} `{!Cocontinuous F}
-                        {R} (J : R -> X),
-    F (colim J) ⟛ colim (F ∘ J).
-Proof. move=> *; apply/colim_unique'/create_colim_cocone. Qed.
-Lemma distrib_colim_sufficient : forall `{Bicomplete X, Bicomplete Y}
-                                   {F : X -> Y} `{!Functor F},
-    (forall {R} (J : R -> X), F (colim J) ⊢ colim (F ∘ J)) -> Cocontinuous F.
-Proof.
-  move=> X Pr_X Comp_X Y Pr_Y Comp_Y F Funct_F Distr R A J /colim_unique' E.
-  apply/colim_unique'; rewrite E; split.
-  - apply/Distr.
-  - apply/colim_left => r /=; apply/fmap'/colim_right.
-Qed.
-
-Lemma undistrib_lim_cone : forall `{Functor X Y F, !Full F} {R} A (J : R -> X),
-    lim_cone (F A) (F ∘ J) -> lim_cone A J.
-Proof.
-  move=> X ? Y ? F ? ? R A J [C U]; split=> [r | A' C'].
-  - apply/unfmap/C.
-  - apply/unfmap/U => r /=; apply/fmap'/C'.
-Qed.
-Lemma undistrib_colim_cocone : forall `{Functor X Y F, !Full F} {R} (J : R -> X) A,
-    colim_cocone (F ∘ J) (F A) -> colim_cocone J A.
-Proof.
-  move=> X ? Y ? F ? ? R J A [C U]; split=> [r | A' C'].
-  - apply/unfmap/C.
-  - apply/unfmap/U => r /=; apply/fmap'/C'.
-Qed.
+Program Instance bool_proset : Proset bool := {| pro_le := implb |}.
+Next Obligation. constructor=> [[] | [] []] //=. Qed.
+Instance andb_monoidal : Monoidal pro_le andb true.
+Proof. constructor=> [[] [] | | [] | []] //=. Qed.
+Instance orb_monoidal : Monoidal pro_le orb false.
+Proof. constructor=> [[] [] [] | | [] | []] //=. Qed.
+Instance andb_sym : Sym pro_le andb.
+Proof. move=> [] [] //=. Qed.
+Instance orb_sym : Sym pro_le orb.
+Proof. move=> [] [] //=. Qed.
+Instance bool_mset : MonSet bool
+  := {| pro_tens := andb |}.
+Instance bool_smset : SymMonSet bool := {}.
 
 (*
-Instance op_continuous1 `{Functor X Y F, !Continuous F}
-  : Cocontinuous (Op ∘ F ∘ get_op).
-Proof.
-  move=> R J A [C U].
-  split=> [r | [A']] /=.
-  - move: (C r); move: (A) (J r) => [?] [?] /=; apply/fmap'.
-  - apply: C'. (U (Op (F (get_op A)))). A')).
-*)
-
-Instance id_functor `{Proset X} : Functor (@id X).
-Proof. firstorder. Qed.
-Instance id_strongmon `{MonSet X} : StrongMon (@id X).
-Proof. firstorder. Qed.
-Instance id_continuous `{Proset X} : Continuous (@id X).
-Proof. firstorder. Qed.
-Instance id_cocontinuous `{Proset X} : Cocontinuous (@id X).
-Proof. firstorder. Qed.
-Instance compose_functor `{Proset X, Proset Y, Proset Z'} {F : Y -> Z'} {G : X -> Y}
-         `{!Functor F, !Functor G} : Functor (F ∘ G) | 0.
-Proof. firstorder. Qed.
-Instance compose_laxmon `{MonSet X, MonSet Y, MonSet Z'}
-         {F : Y -> Z'} {G : X -> Y} `{!Functor F, !Functor G, !LaxMon F, !LaxMon G}
-  : LaxMon (F ∘ G).
-Proof.
-  constructor=> [| A B] /=.
-  - setoid_rewrite <- pres_memp; apply: pres_memp.
-  - setoid_rewrite <- pres_tens; apply: pres_tens.
-Qed.
-Instance compose_oplaxmon `{MonSet X, MonSet Y, MonSet Z'}
-         {F : Y -> Z'} {G : X -> Y} `{!Functor F, !Functor G, !OplaxMon F, !OplaxMon G}
-  : OplaxMon (F ∘ G).
-Proof.
-  constructor=> [| A B] /=.
-  - setoid_rewrite pres_memp_op; apply: pres_memp_op.
-  - setoid_rewrite pres_tens_op; apply: pres_tens_op.
-Qed.
-Instance compose_strongmon `{MonSet X, MonSet Y, MonSet Z'}
-         {F : Y -> Z'} {G : X -> Y} `{!Functor F, !Functor G, !StrongMon F, !StrongMon G}
-  : StrongMon (F ∘ G).
-Proof. constructor; typeclasses eauto. Qed.
-Instance compose_continuous `{Proset X, Proset Y, Proset Z'} {F : Y -> Z'} {G : X -> Y}
-         `{!Functor F, !Functor G, !Continuous F, !Continuous G} : Continuous (F ∘ G) | 0.
-Proof. move=> *; by apply: (distrib_lim_cone (F:=F) _ _ (distrib_lim_cone _ _ _)). Qed.
-Instance compose_cocontinuous `{Proset X, Proset Y, Proset Z'} {F : Y -> Z'} {G : X -> Y}
-         `{!Functor F, !Functor G, !Cocontinuous F, !Cocontinuous G}
-  : Cocontinuous (F ∘ G) | 0.
-Proof.
-  move=> *; by apply: (distrib_colim_cocone (F:=F) _ _ (distrib_colim_cocone _ _ _)).
-Qed.
-Instance const_functor {Y} `{Proset X} : Functor (@const X Y).
-Proof. firstorder. Qed.
-Instance const_strongmon {Y} `{MonSet X} : StrongMon (@const X Y).
-Proof. constructor; by constructor. Qed.
-Instance subst_functor1 {Y Y'} `{Proset X} {f : Y' -> Y} : Functor (X:=Y -> X) (.∘ f).
-Proof. firstorder. Qed.
-Instance subst_strongmon1 {Y Y'} `{MonSet X} {f : Y' -> Y} :
-  StrongMon (X:=Y -> X) (.∘ f).
-Proof. constructor; by constructor. Qed.
-Instance subst_continuous1 {Y Y'} `{Bicomplete X} {f : Y' -> Y}
-  : Continuous (X:=Y -> X) (.∘ f).
-Proof. by apply/distrib_lim_sufficient. Qed.
-Instance subst_cocontinuous1 {Y Y'} `{Bicomplete X} {f : Y' -> Y}
-  : Cocontinuous (X:=Y -> X) (.∘ f).
-Proof. by apply/distrib_colim_sufficient. Qed.
-Instance postcomp_functor {Y} `{Proset X, Proset X'} {f : X -> X'} `{!Functor f} :
-  Functor (X:=Y -> X) (f ∘.).
-Proof. firstorder. Qed.
-Instance postcomp_laxmon {Y} `{MonSet X, MonSet X'}
-         {f : X -> X'} `{!Functor f, !LaxMon f} : LaxMon (X:=Y -> X) (f ∘.).
-Proof. firstorder. Qed.
-Instance postcomp_oplaxmon {Y} `{MonSet X, MonSet X'}
-         {f : X -> X'} `{!Functor f, !OplaxMon f} : OplaxMon (X:=Y -> X) (f ∘.).
-Proof. firstorder. Qed.
-Instance postcomp_strongmon {Y} `{MonSet X, MonSet X'}
-         {f : X -> X'} `{!Functor f, !StrongMon f} : StrongMon (X:=Y -> X) (f ∘.).
-Proof. firstorder. Qed.
-Definition eval_at {X Y} (y : Y) : (Y -> X) -> X := fun f => f y.
-Arguments eval_at {_ _} _ _ /.
-Instance subst_functor2 {Y} `{Proset X} {y : Y} : Functor (X:=Y -> X) (eval_at y).
-Proof. firstorder. Qed.
-Instance subst_strongmon2 {Y} `{MonSet X} {y : Y} : StrongMon (X:=Y -> X) (eval_at y).
-Proof. constructor; by constructor. Qed.
-Instance subst_continuous2 {Y} `{Bicomplete X} {y : Y} : Continuous (X:=Y -> X) (eval_at y).
-Proof. by apply/distrib_lim_sufficient. Qed.
-Instance subst_cocontinuous2 {Y} `{Bicomplete X} {y : Y}
-  : Cocontinuous (X:=Y -> X) (eval_at y).
-Proof. by apply/distrib_colim_sufficient. Qed.
-Instance fst_functor `{Proset X, Proset Y} : Functor (@fst X Y).
-Proof. firstorder. Qed.
-Instance fst_strongmon `{MonSet X, MonSet Y} : StrongMon (@fst X Y).
-Proof. by compute. Qed.
-Instance fst_continuous `{Proset X, Proset Y} : Continuous (@fst X Y).
-Proof. move=> R [A B] J /=; rewrite prod_lim_cone /=; tauto. Qed.
-Instance fst_cocontinuous `{Proset X, Proset Y} : Cocontinuous (@fst X Y).
-Proof. move=> R J [A B] /=; rewrite prod_colim_cocone /=; tauto. Qed.
-Instance snd_functor `{Proset X, Proset Y} : Functor (@snd X Y).
-Proof. firstorder. Qed.
-Instance snd_strongmon `{MonSet X, MonSet Y} : StrongMon (@snd X Y).
-Proof. by compute. Qed.
-Instance snd_continuous `{Proset X, Proset Y} : Continuous (@snd X Y).
-Proof. move=> R [A B] J /=; rewrite prod_lim_cone /=; tauto. Qed.
-Instance snd_cocontinuous `{Proset X, Proset Y} : Cocontinuous (@snd X Y).
-Proof. move=> R J [A B] /=; rewrite prod_colim_cocone /=; tauto. Qed.
-Instance pair_functor `{Proset X, Proset Y} : Functor (@pair X Y).
-Proof. by compute. Qed.
-Instance pair_functor' `{Proset X, Proset Y} {A} : Functor (@pair X Y A).
-Proof. by compute. Qed.
-Definition r_pair {X Y} (B : Y) : X -> X * Y := fun A => (A, B).
-Arguments r_pair {_ _} _ _ /.
-Instance r_pair_functor' `{Proset X, Proset Y} {B} : Functor (@r_pair X Y B).
-Proof. by compute. Qed.
-Instance memp_pair_strongmon `{MonSet X, MonSet Y} : StrongMon (@pair X Y memp).
-Proof.
-  constructor; constructor=> [| B B']; rewrite /= /prod_relation //=;
-    (split; [apply (pro_lunit memp) | done]).
-Qed.
-Instance pair_memp_strongmon `{MonSet X, MonSet Y} : StrongMon (@r_pair X Y memp).
-Proof.
-  constructor; constructor=> [| A A']; rewrite /= /prod_relation //=;
-    (split; [done | apply (pro_lunit memp)]).
-Qed.
-Instance prod_map_functor `{Proset X, Proset X', Proset Y, Proset Y'}
-         {F : X -> X'} {G : Y -> Y'} `{!Functor F, !Functor G} : Functor (prod_map F G).
-Proof. firstorder. Qed.
-Instance prod_map_laxmon `{MonSet X, MonSet X', MonSet Y, MonSet Y'}
-         {F : X -> X'} {G : Y -> Y'} `{!Functor F, !Functor G, !LaxMon F, !LaxMon G}
-  : LaxMon (prod_map F G).
-Proof. firstorder. Qed.
-Instance prod_map_oplaxmon `{MonSet X, MonSet X', MonSet Y, MonSet Y'}
-         {F : X -> X'} {G : Y -> Y'} `{!Functor F, !Functor G, !OplaxMon F, !OplaxMon G}
-  : OplaxMon (prod_map F G).
-Proof. firstorder. Qed.
-Instance prod_map_strongmon `{MonSet X, MonSet X', MonSet Y, MonSet Y'}
-         {F : X -> X'} {G : Y -> Y'} `{!Functor F, !Functor G, !StrongMon F, !StrongMon G}
-  : StrongMon (prod_map F G).
-Proof. firstorder. Qed.
-Instance prod_map_continuous `{Proset X, Proset X', Proset Y, Proset Y'} {F : X -> X'}
-         {G : Y -> Y'} `{!Functor F, !Functor G, !Continuous F, !Continuous G}
-  : Continuous (prod_map F G).
-Proof.
-  move=> R [A B] J /= /prod_lim_cone /= [L1 L2].
-  apply/prod_lim_cone; split; simpl; by apply/distrib_lim_cone.
-Qed.
-Instance prod_map_cocontinuous `{Proset X, Proset X', Proset Y, Proset Y'} {F : X -> X'}
-         {G : Y -> Y'} `{!Functor F, !Functor G, !Cocontinuous F, !Cocontinuous G}
-  : Cocontinuous (prod_map F G).
-Proof.
-  move=> R J [A B] /= /prod_colim_cocone /= [L1 L2].
-  apply/prod_colim_cocone; split; simpl.
-  - by apply/(distrib_colim_cocone (F:=F)).
-  - by apply/(distrib_colim_cocone (F:=G)).
-Qed.
-Definition r_prod_map {X X' Y Y'} (G : Y -> Y') : (X -> X') -> X * Y -> X' * Y'
-  := fun F => prod_map F G.
-Arguments r_prod_map {_ _ _ _} _ _ /.
-Instance prod_map_functor' `{Proset X, Proset X', Proset Y, Proset Y'}
-         {F : X -> X'} `{!Functor F} : Functor (prod_map (B:=Y) (B':=Y') F).
-Proof. move=> G G' D [A B] /=; firstorder. Qed.
-Instance r_prod_map_functor `{Proset X, Proset X', Proset Y, Proset Y'}
-         {G : Y -> Y'} `{!Functor G} : Functor (r_prod_map (X:=X) (X':=X') G).
-Proof. move=> F F' D [A B] /=; firstorder. Qed.
-Instance prod_map_functor'' `{Proset X, Proset X', Proset Y, Proset Y'}
-  : Functor (prod_map (A:=X) (A':=X') (B:=Y) (B':=Y')).
-Proof. move=> F F' D G [A B] /=; firstorder. Qed.
-Instance curry_functor `{Proset X, Proset Y, Proset Z} {F : X -> Y -> Z}
-         `{!Functor F, !forall x, Functor (F x)}
-  : Functor (curry F).
-Proof. move=> [A B] [A' B'] /= [D1 D2]; setoid_rewrite D2; apply: (fmap' (F:=F) D1). Qed.
-Instance uncurry_functor `{Proset X, Proset Y, Proset Z} {F : X * Y -> Z} `{!Functor F}
-  : Functor (uncurry F).
-Proof.
-  move=> A A' D B; change (F (r_pair B A) ⊢ F (r_pair B A')); by setoid_rewrite D.
-Qed.
-Instance uncurry_functor' `{Proset X, Proset Y, Proset Z}
-         {F : X * Y -> Z} `{!Functor F} {A}
-  : Functor (uncurry F A).
-Proof. move=> B B' D; unfold uncurry; by setoid_rewrite D. Qed.
-Instance lim_functor {Y} `{Bicomplete X} : Functor (lim (X:=X) (R:=Y)).
-Proof. move=> A B H1; apply/lim_right => y; by setoid_rewrite lim_left. Qed.
-Instance lim_laxmon {Y} `{Bicomplete X, !MonSet X} : LaxMon (lim (X:=X) (R:=Y)).
-Proof.
-  constructor=> [| A B].
-  - apply: lim_right => A //.
-  - apply: lim_right => y; apply: bimap; by apply/lim_left.
-Qed.
-Instance colim_functor {Y} `{Bicomplete X} : Functor (colim (X:=X) (R:=Y)).
-Proof. move=> A B H1; apply/colim_left => y; by setoid_rewrite <- colim_right. Qed.
-Instance colim_oplaxmon {Y} `{Bicomplete X, !MonSet X} : OplaxMon (colim (X:=X) (R:=Y)).
-Proof.
-  constructor=> [| A B].
-  - apply: colim_left => A //.
-  - apply: colim_left => y; apply: bimap; by apply/colim_right.
-Qed.
-
-Lemma distrib_terminal : forall `{Bicomplete X, Bicomplete Y} {F : X -> Y} `{!Continuous F},
-    F ⊤ ⟛ ⊤.
-Proof. move=> *; rewrite distrib_lim; apply/fmap_core/pw_core' => -[]. Qed.
-Lemma distrib_initial : forall `{Bicomplete X, Bicomplete Y} {F : X -> Y} `{!Cocontinuous F},
-    F ⊥ ⟛ ⊥.
-Proof. move=> *; rewrite distrib_colim; apply/fmap_core/pw_core' => -[]. Qed.
-Lemma distrib_product : forall `{Bicomplete X, Bicomplete Y} {F : X -> Y} `{!Continuous F}
-                          {A B},
-    F (A × B) ⟛ F A × F B.
-Proof. move=> *; rewrite distrib_lim; apply/fmap_core/pw_core' => -[] //=. Qed.
-Lemma distrib_coproduct : forall `{Bicomplete X, Bicomplete Y} {F : X -> Y} `{!Cocontinuous F}
-                            {A B},
-    F (A + B) ⟛ F A + F B.
-Proof. move=> *; rewrite distrib_colim; apply/fmap_core/pw_core' => -[] //=. Qed.
-Lemma distrib_embed_prop : forall `{Bicomplete X, Bicomplete Y} {F : X -> Y}
-                             `{!Continuous F, !Cocontinuous F} {P},
-    F (embed_prop P) ⟛ embed_prop P.
-Proof.
-  move=> *; rewrite distrib_colim; apply/fmap_core/pw_core' => H /=.
-  apply/distrib_terminal.
-Qed.
-
-Class ClosedMonoidal {X} (R : X -> X -> Prop) (T : X -> X -> X) (H : X -> X -> X) :=
-  tensor_hom A B C : R (T A B) C <-> R A (H B C).
-Hint Mode ClosedMonoidal ! ! ! - : typeclass_instances.
-Hint Mode ClosedMonoidal ! ! - ! : typeclass_instances.
-Class LClosedMonoidal {X} (R : X -> X -> Prop) (T : X -> X -> X) (H : X -> X -> X) :=
-  l_tensor_hom A B C : R (T B A) C <-> R A (H B C).
-Hint Mode LClosedMonoidal ! ! ! - : typeclass_instances.
-Hint Mode LClosedMonoidal ! ! - ! : typeclass_instances.
-Class ClosedMonSet (X : Type) `{MonSet X} :=
-  {internal_hom : X -> X -> X;
-   pro_tensor_hom :> ClosedMonoidal pro_le pro_tens internal_hom}.
-Hint Mode ClosedMonSet ! - - : typeclass_instances.
-Infix "⊸" := internal_hom (at level 40) : proset_scope.
-Class LClosedMonSet (X : Type) `{MonSet X} :=
-  {l_internal_hom : X -> X -> X;
-   pro_l_tensor_hom :> LClosedMonoidal pro_le pro_tens l_internal_hom}.
-Hint Mode LClosedMonSet ! - - : typeclass_instances.
-Infix "⊸̂" := l_internal_hom (at level 40) : proset_scope.
-Class Frame (X : Type) `{Bicomplete X} :=
-  {exponential : X -> X -> X;
-   product_exponential A B C : A × B ⊢ C <-> A ⊢ exponential B C}.
-Hint Mode Frame ! - - : typeclass_instances.
-Infix "⟿" := exponential (at level 40) : proset_scope.
-Instance sym_lclosed `{SymMonSet X, !ClosedMonSet X} : LClosedMonSet X | 2
-  := {| l_internal_hom := internal_hom |}.
-Proof.
-  move=> A B C; split.
-  - setoid_rewrite <- (proj2 (pro_sym' _ _)); apply pro_tensor_hom.
-  - setoid_rewrite pro_sym'; apply pro_tensor_hom.
-Defined.
-Polymorphic Instance prop_frame : Frame Prop
-  := {| exponential (P Q : Prop) := P -> Q |}.
-Proof.
-  move=> A B C; split.
-  - move=> D H1 H2; apply: D => -[] //.
-  - move=> D H1; apply: D; [apply: (H1 true) | apply: (H1 false)].
-Defined.
-Polymorphic Instance prop_cmset : ClosedMonSet Prop
-  := {| internal_hom (P Q : Prop) := P -> Q |}.
-Proof. constructor; compute; tauto. Defined.
-
-(* TODO Move these *)
-Instance internal_hom_proper `{ClosedMonSet X}
-  : Proper (pro_le --> pro_le ++> pro_le) (internal_hom (X:=X)).
-Proof.
-  move=> A A' /= D1 B B' D2; rewrite -tensor_hom.
-  setoid_rewrite D1; setoid_rewrite <- D2; rewrite tensor_hom //.
-Qed.
-Instance internal_hom_proper' `{ClosedMonSet X}
-  : Proper (pro_le ++> pro_le --> flip pro_le) (internal_hom (X:=X)).
-Proof. move=> ? ? ? ? ? ? /=; by apply: internal_hom_proper. Qed.
-Instance l_internal_hom_proper `{LClosedMonSet X}
-  : Proper (pro_le --> pro_le ++> pro_le) (l_internal_hom (X:=X)).
-Proof.
-  move=> A A' /= D1 B B' D2; rewrite -l_tensor_hom.
-  setoid_rewrite D1; setoid_rewrite <- D2; rewrite l_tensor_hom //.
-Qed.
-Instance l_internal_hom_proper' `{LClosedMonSet X}
-  : Proper (pro_le ++> pro_le --> flip pro_le) (l_internal_hom (X:=X)).
-Proof. move=> ? ? ? ? ? ? /=; by apply: l_internal_hom_proper. Qed.
-
 Record discrete (A : Type) := Discrete {get_discrete : A}.
 Add Printing Constructor discrete.
 Arguments Discrete {_}.
 Arguments get_discrete {_}.
-Instance discrete_proset {A} : Proset (discrete A) := {| pro_le := eq |}.
-Instance discrete_functor {A} `{Proset Y} {F : discrete A -> Y} : Functor F | 3.
-Proof. move=> [a1] [a2] /= -> //. Qed.
-Instance get_discrete_functor `{Proset A} : Functor (@get_discrete A).
-Proof. move=> [a1] [a2] /= [->] //. Qed.
+*)
+Definition discrete (X : Type) : Type := X.
+Definition Discrete {X} (A : X) : discrete X := A.
+Definition get_discrete {X} (A : discrete X) : X := A.
+Typeclasses Opaque discrete Discrete get_discrete.
+Opaque discrete Discrete get_discrete.
+Instance discrete_proset {X} : Proset (discrete X) := {| pro_le := eq |}.
+Instance discrete_functor {X} `{Proset Y} {F : discrete X -> Y} : Functor F | 3.
+Proof. move=> a1 a2 /= -> //. Qed.
 
-Instance unit_proset : Proset () := {| pro_le _ _ := True |}.
-Program Instance unit_mset : MonSet () := {| memp := (); pro_tens _ _ := () |}.
+Definition indiscrete (X : Type) : Type := X.
+Definition Indiscrete {X} (A : X) : indiscrete X := A.
+Definition get_indiscrete {X} (A : indiscrete X) : X := A.
+Typeclasses Opaque indiscrete Indiscrete get_indiscrete.
+Opaque indiscrete Indiscrete get_indiscrete.
+Program Instance indiscrete_proset {X} : Proset (indiscrete X) := {| pro_le _ _ := True |}.
 Next Obligation. done. Qed.
-Program Instance unit_smset : SymMonSet () := {}.
-Next Obligation. done. Qed.
-
-Require Import stdpp.list.
-(* This brings Z into scope, which I tend to use as a variable name sometimes,
-   so this dummy definition will prevent me from accidentally using that Z when I thought
-   I was doing an implicit binder. *)
-Definition Z : () := ().
-Instance list_proset `{Proset X} : Proset (list X) :=
-  {| pro_le := Forall2 pro_le |}.
-Instance app_monoidal `{PreOrder X R}
-  : Monoidal (Forall2 R) app nil.
-Proof.
-  constructor.
-  - move=> As As' Bs Bs' D1 D2; by apply: Forall2_app.
-  - done.
-  - move=> As; rewrite app_nil_r //.
-  - move=> As Bs Cs; rewrite app_assoc //.
-Qed.
-Instance list_mset `{Proset X} : MonSet (list X)
-  := {| pro_tens := app |}.
-Instance list_map_functor `{Proset X, Proset Y} : Functor (fmap (M:=list) (A:=X) (B:=Y)).
-Proof. move=> F G D As; apply/Forall2_fmap/Forall2_impl; firstorder. Qed.
-Instance list_map_functor' `{Functor X Y F} : Functor (X:=list X) (fmap F).
-Proof. move=> As Bs D; apply/Forall2_fmap/Forall2_impl; [apply: D | done]. Qed.
-Instance list_map_strongmon `{Proset X, Proset Y} {F : X -> Y}
-  : StrongMon (fmap (M:=list) F).
-Proof. constructor; constructor=> // As Bs; rewrite fmap_app //. Qed.
-Instance cons_functor `{Proset X} : Functor (@cons X).
-Proof. by constructor. Qed.
-Instance cons_functor' `{Proset X} {A : X} : Functor (cons A).
-Proof. by constructor. Qed.
-Definition tens_all `{MonSet X} : list X -> X
-  := foldr pro_tens memp.
-Instance tens_all_functor `{MonSet X} : Functor tens_all.
-Proof. move=> ? ?; elim=> //= A B As Bs D _ IH; setoid_rewrite D; by setoid_rewrite IH. Qed.
-Instance tens_all_strongmon `{MonSet X} : StrongMon tens_all.
-Proof.
-  constructor; constructor=> //; elim=> /= [| A As IH] Bs.
-  - rewrite {2}/pro_tens /= pro_lunit //.
-  - rewrite -pro_massoc; by setoid_rewrite IH.
-  - rewrite {1}/pro_tens /=; apply pro_lunit.
-  - setoid_rewrite IH; rewrite pro_massoc //.
-Qed.
-Fixpoint tens_all' `{MonSet X} (l : list X) : X :=
-  match l with
-  | [] => memp
-  | [A] => A
-  | A :: As => A ⊗ tens_all' As
-  end.
-Lemma tens_all'_alt : forall `{MonSet X} {l : list X},
-    tens_all' l ⟛ tens_all l.
-Proof.
-  move=> X ? ?; elim=> //= A [| A' As] /= IH.
-  - rewrite pro_runit //.
-  - rewrite IH //.
-Qed.
-Instance tens_all'_functor `{MonSet X} : Functor tens_all'.
-Proof.
-  move=> *; rewrite tens_all'_alt; setoid_rewrite <- (proj2 tens_all'_alt); by apply/fmap'.
-Qed.
-Instance tens_all'_strongmon `{MonSet X} : StrongMon tens_all'.
-Proof.
-  constructor; constructor=> // *.
-  - rewrite 2!tens_all'_alt; setoid_rewrite <- (proj2 tens_all'_alt); apply/pres_tens.
-  - rewrite tens_all'_alt; setoid_rewrite <- (proj2 tens_all'_alt); apply/pres_tens_op.
-Qed.
-Instance mret_functor `{Proset X} : Functor (mret (M:=list) (A:=X)).
-Proof. by constructor. Qed.
-Definition list_sharp {X} `{MonSet Y} (F : X -> Y) : list X -> Y
-  := tens_all' ∘ fmap F.
-Definition list_flat {X Y} (F : list X -> Y) : X -> Y
-  := F ∘ mret.
-Fact list_sharp_signature `{Proset X, MonSet Y} {F : list X -> Y} `{!Functor F}
-  : TCAnd (Functor (list_sharp F)) (StrongMon (list_sharp F)).
-Proof. typeclasses eauto. Qed.
-Fact list_flat_signature `{Proset X, MonSet Y} {F : list X -> Y} `{!Functor F, !StrongMon F}
-  : Functor (list_flat F).
-Proof. typeclasses eauto. Qed.
-Lemma list_free_monoid1 : forall `{Proset X, MonSet Y} {F : list X -> Y} `{!StrongMon F},
-    list_sharp (list_flat F) ⟛ F.
-Proof.
-  move=> X ? Y ? ? F ?; apply/pw_core' => As.
-  rewrite /list_sharp; setoid_rewrite tens_all'_alt.
-  elim: As => /= [| A As IH].
-  - rewrite /list_sharp /list_flat /=; split.
-    + apply: (pres_memp (F:=F)).
-    + apply: (pres_memp_op (F:=F)).
-  - rewrite /list_sharp /list_flat /= -/fmap.
-    change (A :: As) with (mret A ⊗ As).
-    split.
-    + setoid_rewrite <- pres_tens; apply/bimap; firstorder.
-    + setoid_rewrite pres_tens_op; apply/bimap; firstorder.
-Qed.
-Lemma list_free_monoid2 : forall {X} `{MonSet Y} {F : X -> Y},
-    list_flat (list_sharp F) ⟛ F.
-Proof. split=> ? //=; apply pro_runit. Qed.
+Instance indiscrete_functor `{Proset X} {Y} {F : X -> indiscrete Y} : Functor F | 3.
+Proof. done. Qed.
 
 Definition sig_rel {X} (R : X -> X -> Prop) (P : X -> Prop) : sig P -> sig P -> Prop :=
   fun s1 s2 => R (`s1) (`s2).
@@ -965,44 +323,1032 @@ Arguments pack {_} _ _ {_} /.
 Arguments pack_ph {_ _} _ _ {_} /.
 Arguments restrict_cod {_ _} _ _ {_} _ /.
 Arguments restrict_cod_ph {_ _ _} _ _ {_} _ /.
-Instance restrict_cod_functor `{Functor X Y F} {P : Y -> Prop} {H : forall A, P (F A)}
-  : Functor (restrict_cod P F (H:=H)).
+Instance restrict_cod_functor `{Functor X Y F} {P : Y -> Prop} {I : forall A, P (F A)}
+  : Functor (restrict_cod P F (H:=I)).
 Proof. firstorder. Qed.
-Instance restrict_cod_full `{Full X Y F} {P : Y -> Prop} {H : forall A, P (F A)}
-  : Full (restrict_cod P F (H:=H)).
+Instance restrict_cod_full `{Full X Y F} {P : Y -> Prop} {I : forall A, P (F A)}
+  : Full (restrict_cod P F (H:=I)).
 Proof. firstorder. Qed.
 Instance restrict_cod_laxmon `{LaxMon X Y F} {P : Y -> Prop}
-         `{!MonClosed P} {H : forall A, P (F A)}
-  : LaxMon (restrict_cod P F (H:=H)).
+         `{!MonClosed P} {I : forall A, P (F A)}
+  : LaxMon (restrict_cod P F (H:=I)).
 Proof. firstorder. Qed.
 Instance restrict_cod_oplaxmon `{OplaxMon X Y F} {P : Y -> Prop}
-         `{!MonClosed P} {H : forall A, P (F A)}
-  : OplaxMon (restrict_cod P F (H:=H)).
+         `{!MonClosed P} {I : forall A, P (F A)}
+  : OplaxMon (restrict_cod P F (H:=I)).
 Proof. firstorder. Qed.
 Instance restrict_cod_strongmon `{StrongMon X Y F} {P : Y -> Prop}
-         `{!MonClosed P} {H : forall A, P (F A)}
-  : StrongMon (restrict_cod P F (H:=H)).
+         `{!MonClosed P} {I : forall A, P (F A)}
+  : StrongMon (restrict_cod P F (H:=I)).
 Proof. firstorder. Qed.
-Instance restrict_cod_ph_functor `{Functor X Y F} {P : Y -> Prop} {H : forall A, P (F A)}
+Instance restrict_cod_ph_functor `{Functor X Y F} {P : Y -> Prop} {I : forall A, P (F A)}
          {ph : phant (sig P)}
-  : Functor (restrict_cod_ph ph F (H:=H)).
+  : Functor (restrict_cod_ph ph F (H:=I)).
 Proof. firstorder. Qed.
-Instance restrict_cod_ph_full `{Full X Y F} {P : Y -> Prop} {H : forall A, P (F A)}
+Instance restrict_cod_ph_full `{Full X Y F} {P : Y -> Prop} {I : forall A, P (F A)}
          {ph : phant (sig P)}
-  : Full (restrict_cod_ph ph F (H:=H)).
+  : Full (restrict_cod_ph ph F (H:=I)).
 Proof. firstorder. Qed.
 Instance restrict_cod_ph_laxmon `{LaxMon X Y F} {P : Y -> Prop} {ph : phant (sig P)}
-         `{!MonClosed P} {H : forall A, P (F A)}
-  : LaxMon (restrict_cod_ph ph F (H:=H)).
+         `{!MonClosed P} {I : forall A, P (F A)}
+  : LaxMon (restrict_cod_ph ph F (H:=I)).
 Proof. firstorder. Qed.
 Instance restrict_cod_ph_oplaxmon `{OplaxMon X Y F} {P : Y -> Prop} {ph : phant (sig P)}
-         `{!MonClosed P} {H : forall A, P (F A)}
-  : OplaxMon (restrict_cod_ph ph F (H:=H)).
+         `{!MonClosed P} {I : forall A, P (F A)}
+  : OplaxMon (restrict_cod_ph ph F (H:=I)).
 Proof. firstorder. Qed.
 Instance restrict_cod_ph_strongmon `{StrongMon X Y F} {P : Y -> Prop} {ph : phant (sig P)}
-         `{!MonClosed P} {H : forall A, P (F A)}
-  : StrongMon (restrict_cod_ph ph F (H:=H)).
+         `{!MonClosed P} {I : forall A, P (F A)}
+  : StrongMon (restrict_cod_ph ph F (H:=I)).
 Proof. firstorder. Qed.
+
+Instance id_functor `{Proset X} : Functor (@id X).
+Proof. firstorder. Qed.
+Instance id_strongmon `{MonSet X} : StrongMon (@id X).
+Proof. firstorder. Qed.
+Instance compose_functor `{Proset X, Proset Y, Proset Z'} {F : Y -> Z'} {G : X -> Y}
+         `{!Functor F, !Functor G} : Functor (F ∘ G) | 0.
+Proof. firstorder. Qed.
+Instance compose_laxmon `{MonSet X, MonSet Y, MonSet Z'}
+         {F : Y -> Z'} {G : X -> Y} `{!Functor F, !Functor G, !LaxMon F, !LaxMon G}
+  : LaxMon (F ∘ G).
+Proof.
+  constructor=> [| A B] /=.
+  - setoid_rewrite <- pres_memp; apply: pres_memp.
+  - setoid_rewrite <- pres_tens; apply: pres_tens.
+Qed.
+Instance compose_oplaxmon `{MonSet X, MonSet Y, MonSet Z'}
+         {F : Y -> Z'} {G : X -> Y} `{!Functor F, !Functor G, !OplaxMon F, !OplaxMon G}
+  : OplaxMon (F ∘ G).
+Proof.
+  constructor=> [| A B] /=.
+  - setoid_rewrite pres_memp_op; apply: pres_memp_op.
+  - setoid_rewrite pres_tens_op; apply: pres_tens_op.
+Qed.
+Instance compose_strongmon `{MonSet X, MonSet Y, MonSet Z'}
+         {F : Y -> Z'} {G : X -> Y} `{!Functor F, !Functor G, !StrongMon F, !StrongMon G}
+  : StrongMon (F ∘ G).
+Proof. constructor; typeclasses eauto. Qed.
+Instance const_functor {Y} `{Proset X} : Functor (@const X Y).
+Proof. firstorder. Qed.
+Instance const_strongmon {Y} `{MonSet X} : StrongMon (@const X Y).
+Proof. constructor; by constructor. Qed.
+Instance subst_functor1 {Y Y'} `{Proset X} {f : Y' -> Y} : Functor (X:=Y -> X) (.∘ f).
+Proof. firstorder. Qed.
+Instance subst_strongmon1 {Y Y'} `{MonSet X} {f : Y' -> Y} :
+  StrongMon (X:=Y -> X) (.∘ f).
+Proof. constructor; by constructor. Qed.
+Instance postcomp_functor {Y} `{Proset X, Proset X'} {f : X -> X'} `{!Functor f} :
+  Functor (X:=Y -> X) (f ∘.).
+Proof. firstorder. Qed.
+Instance postcomp_laxmon {Y} `{MonSet X, MonSet X'}
+         {f : X -> X'} `{!Functor f, !LaxMon f} : LaxMon (X:=Y -> X) (f ∘.).
+Proof. firstorder. Qed.
+Instance postcomp_oplaxmon {Y} `{MonSet X, MonSet X'}
+         {f : X -> X'} `{!Functor f, !OplaxMon f} : OplaxMon (X:=Y -> X) (f ∘.).
+Proof. firstorder. Qed.
+Instance postcomp_strongmon {Y} `{MonSet X, MonSet X'}
+         {f : X -> X'} `{!Functor f, !StrongMon f} : StrongMon (X:=Y -> X) (f ∘.).
+Proof. firstorder. Qed.
+Definition eval_at {X Y} (y : Y) : (Y -> X) -> X := fun f => f y.
+Arguments eval_at {_ _} _ _ /.
+Instance subst_functor2 {Y} `{Proset X} {y : Y} : Functor (X:=Y -> X) (eval_at y).
+Proof. firstorder. Qed.
+Instance subst_strongmon2 {Y} `{MonSet X} {y : Y} : StrongMon (X:=Y -> X) (eval_at y).
+Proof. constructor; by constructor. Qed.
+Instance fst_functor `{Proset X, Proset Y} : Functor (@fst X Y).
+Proof. firstorder. Qed.
+Instance fst_strongmon `{MonSet X, MonSet Y} : StrongMon (@fst X Y).
+Proof. by compute. Qed.
+Instance snd_functor `{Proset X, Proset Y} : Functor (@snd X Y).
+Proof. firstorder. Qed.
+Instance snd_strongmon `{MonSet X, MonSet Y} : StrongMon (@snd X Y).
+Proof. by compute. Qed.
+Instance pair_functor `{Proset X, Proset Y} : Functor (@pair X Y).
+Proof. by compute. Qed.
+Instance pair_functor' `{Proset X, Proset Y} {A} : Functor (@pair X Y A).
+Proof. by compute. Qed.
+Definition r_pair {X Y} (B : Y) : X -> X * Y := fun A => (A, B).
+Arguments r_pair {_ _} _ _ /.
+Instance r_pair_functor' `{Proset X, Proset Y} {B} : Functor (@r_pair X Y B).
+Proof. by compute. Qed.
+Instance memp_pair_strongmon `{MonSet X, MonSet Y} : StrongMon (@pair X Y memp).
+Proof.
+  constructor; constructor=> [| B B']; rewrite /= /prod_relation //=;
+    (split; [apply (pro_lunit memp) | done]).
+Qed.
+Instance pair_memp_strongmon `{MonSet X, MonSet Y} : StrongMon (@r_pair X Y memp).
+Proof.
+  constructor; constructor=> [| A A']; rewrite /= /prod_relation //=;
+    (split; [done | apply (pro_lunit memp)]).
+Qed.
+Instance prod_map_functor `{Proset X, Proset X', Proset Y, Proset Y'}
+         {F : X -> X'} {G : Y -> Y'} `{!Functor F, !Functor G} : Functor (prod_map F G).
+Proof. firstorder. Qed.
+Instance prod_map_laxmon `{MonSet X, MonSet X', MonSet Y, MonSet Y'}
+         {F : X -> X'} {G : Y -> Y'} `{!Functor F, !Functor G, !LaxMon F, !LaxMon G}
+  : LaxMon (prod_map F G).
+Proof. firstorder. Qed.
+Instance prod_map_oplaxmon `{MonSet X, MonSet X', MonSet Y, MonSet Y'}
+         {F : X -> X'} {G : Y -> Y'} `{!Functor F, !Functor G, !OplaxMon F, !OplaxMon G}
+  : OplaxMon (prod_map F G).
+Proof. firstorder. Qed.
+Instance prod_map_strongmon `{MonSet X, MonSet X', MonSet Y, MonSet Y'}
+         {F : X -> X'} {G : Y -> Y'} `{!Functor F, !Functor G, !StrongMon F, !StrongMon G}
+  : StrongMon (prod_map F G).
+Proof. firstorder. Qed.
+Definition r_prod_map {X X' Y Y'} (G : Y -> Y') : (X -> X') -> X * Y -> X' * Y'
+  := fun F => prod_map F G.
+Arguments r_prod_map {_ _ _ _} _ _ /.
+Instance prod_map_functor' `{Proset X, Proset X', Proset Y, Proset Y'}
+         {F : X -> X'} `{!Functor F} : Functor (prod_map (B:=Y) (B':=Y') F).
+Proof. move=> G G' D [A B] /=; firstorder. Qed.
+Instance r_prod_map_functor `{Proset X, Proset X', Proset Y, Proset Y'}
+         {G : Y -> Y'} `{!Functor G} : Functor (r_prod_map (X:=X) (X':=X') G).
+Proof. move=> F F' D [A B] /=; firstorder. Qed.
+Instance prod_map_functor'' `{Proset X, Proset X', Proset Y, Proset Y'}
+  : Functor (prod_map (A:=X) (A':=X') (B:=Y) (B':=Y')).
+Proof. move=> F F' D G [A B] /=; firstorder. Qed.
+Instance curry_functor `{Proset X, Proset Y, Proset Z} {F : X -> Y -> Z}
+         `{!Functor F, !forall x, Functor (F x)}
+  : Functor (curry F).
+Proof. move=> [A B] [A' B'] /= [D1 D2]; setoid_rewrite D2; apply: (fmap' (F:=F) D1). Qed.
+Instance uncurry_functor `{Proset X, Proset Y, Proset Z} {F : X * Y -> Z} `{!Functor F}
+  : Functor (uncurry F).
+Proof.
+  move=> A A' D B; change (F (r_pair B A) ⊢ F (r_pair B A')); by setoid_rewrite D.
+Qed.
+Instance uncurry_functor' `{Proset X, Proset Y, Proset Z}
+         {F : X * Y -> Z} `{!Functor F} {A}
+  : Functor (uncurry F A).
+Proof. move=> B B' D; unfold uncurry; by setoid_rewrite D. Qed.
+
+
+Definition greatest `{Proset X} (P : X -> Prop) (A : X) : Prop
+  := P A /\ forall B, P B -> B ⊢ A.
+Definition least `{Proset X} (P : X -> Prop) (A : X) : Prop
+  := P A /\ forall B, P B -> A ⊢ B.
+Instance greatest_proper `{Proset X}
+  : Proper ((core pro_le ==> iff) ==> core pro_le ==> iff) (greatest (X:=X)).
+Proof.
+  apply proper_sym_impl_iff_2; [firstorder | typeclasses eauto |].
+  move=> P P' E_P A A' E_A [PA U]; split; first by firstorder.
+  move=> B /(E_P _ _ (reflexivity B)); setoid_rewrite <- (proj1 E_A); apply: U.
+Qed.
+Instance least_proper `{Proset X}
+  : Proper ((core pro_le ==> iff) ==> core pro_le ==> iff) (least (X:=X)).
+Proof.
+  apply proper_sym_impl_iff_2; [firstorder | typeclasses eauto |].
+  move=> P P' E_P A A' E_A [PA U]; split; first by firstorder.
+  move=> B /(E_P _ _ (reflexivity B)); setoid_rewrite (proj2 E_A); apply: U.
+Qed.
+Lemma greatest_unique : forall `{Proset X} {P : X -> Prop}
+                          `{!Proper (core pro_le ==> iff) P} {A A'},
+    greatest P A -> greatest P A' -> A ⟛ A'.
+Proof. firstorder. Qed.
+Lemma least_unique : forall `{Proset X} {P : X -> Prop}
+                       `{!Proper (core pro_le ==> iff) P} {A A'},
+    least P A -> least P A' -> A ⟛ A'.
+Proof. firstorder. Qed.
+
+Definition lower_bound `{Proset X} {R} (J : R -> X) (A : X) : Prop
+  := forall r, A ⊢ J r.
+Definition upper_bound `{Proset X} {R} (J : R -> X) (A : X) : Prop
+  := forall r, J r ⊢ A.
+Instance lower_bound_proper `{Proset X} {R}
+  : Proper (pro_le ++> pro_le --> impl) (lower_bound (X:=X) (R:=R)).
+Proof.
+  move=> J1 J2 D_J A1 A2 D_A L r.
+  setoid_rewrite <- D_A; by setoid_rewrite <- (D_J r).
+Qed.
+Instance upper_bound_proper `{Proset X} {R}
+  : Proper (pro_le --> pro_le ++> impl) (upper_bound (X:=X) (R:=R)).
+Proof.
+  move=> J1 J2 D_J A1 A2 D_A L r.
+  setoid_rewrite <- D_A; by setoid_rewrite (D_J r).
+Qed.
+Instance lower_bound_proper' `{Proset X} {R}
+  : Proper (pro_le --> pro_le ++> flip impl) (lower_bound (X:=X) (R:=R)).
+Proof. move=> ? ? ? ? ? ?; by apply: lower_bound_proper. Qed.
+Instance lower_bound_proper'' `{Proset X} {R}
+  : Proper (core pro_le ==> core pro_le ==> iff) (lower_bound (X:=X) (R:=R)).
+Proof.
+  apply: proper_sym_impl_iff_2 => ? ? [D ?] ? ? [D' ?] ?.
+    by apply: lower_bound_proper.
+Qed.
+Instance upper_bound_proper' `{Proset X} {R}
+  : Proper (pro_le ++> pro_le --> flip impl) (upper_bound (X:=X) (R:=R)).
+Proof. move=> ? ? ? ? ? ?; by apply: upper_bound_proper. Qed.
+Instance upper_bound_proper'' `{Proset X} {R}
+  : Proper (core pro_le ==> core pro_le ==> iff) (upper_bound (X:=X) (R:=R)).
+Proof.
+  apply: proper_sym_impl_iff_2 => ? ? [D ?] ? ? [D' ?] ?.
+    by apply: upper_bound_proper.
+Qed.
+Notation glb J A := (greatest (lower_bound J) A).
+Notation lub J A := (least (upper_bound J) A).
+Class HasInf `{Proset X} {R} (J : R -> X) :=
+  {inf : X; is_inf : glb J inf}.
+Class HasSup `{Proset X} {R} (J : R -> X) :=
+  {sup : X; is_sup : lub J sup}.
+Hint Mode HasInf ! - ! ! : typeclass_instances.
+Hint Mode HasSup ! - ! ! : typeclass_instances.
+Arguments inf {X _ R} J {_}.
+Arguments sup {X _ R} J {_}.
+Arguments is_inf {X _ R} J {_}.
+Arguments is_sup {X _ R} J {_}.
+
+(* TODO Lots of stuff! *)
+Definition inf_lb `{Proset X} {R} {J : R -> X} `{!HasInf J} : lower_bound J (inf J)
+  := proj1 (is_inf J).
+Definition inf_left `{Proset X} {R} {J : R -> X} `{!HasInf J} (r : R) {A}
+  : J r ⊢ A -> inf J ⊢ A
+  := fun D => transitivity (inf_lb r) D.
+Definition inf_right `{Proset X} {R} {J : R -> X} `{!HasInf J} {A : X}
+  : lower_bound J A -> A ⊢ inf J
+  := proj2 (is_inf J) A.
+Lemma inf_universal : forall `{Proset X} {R} {J : R -> X} `{!HasInf J} {A : X},
+    lower_bound J A <-> A ⊢ inf J.
+Proof.
+  move=> *; split; first by apply/inf_right.
+  move=> D; setoid_rewrite D; apply: inf_lb.
+Qed.
+Definition sup_ub `{Proset X} {R} {J : R -> X} `{!HasSup J} : upper_bound J (sup J)
+  := proj1 (is_sup J).
+Definition sup_left `{Proset X} {R} {J : R -> X} `{!HasSup J} {A : X}
+  : upper_bound J A -> sup J ⊢ A
+  := proj2 (is_sup J) A.
+Definition sup_right `{Proset X} {R} {J : R -> X} `{!HasSup J} (r : R) {A}
+  : A ⊢ J r -> A ⊢ sup J
+  := fun D => transitivity D (sup_ub r).
+Lemma sup_universal : forall `{Proset X} {R} {J : R -> X} `{!HasSup J} {A : X},
+    upper_bound J A <-> sup J ⊢ A.
+Proof.
+  move=> *; split; first by apply/sup_left.
+  move=> D; setoid_rewrite <- D; apply: sup_ub.
+Qed.
+
+(*
+Definition InfsOfShape (R X : Type) `{!Proset R, !Proset X} : Type
+  := forall J : R -> X, Functor J -> HasInf J.
+Definition SupsOfShape (R X : Type) `{!Proset R, !Proset X} : Type
+  := forall J : R -> X, Functor J -> HasSup J.
+Definition DInfsOfShape (R X : Type) `{!Proset X} : Type
+  := forall J : R -> X, HasInf J.
+Definition DSupsOfShape (R X : Type) `{!Proset X} : Type
+  := forall J : R -> X, HasSup J.
+Existing Class InfsOfShape.
+Existing Class SupsOfShape.
+Existing Class DInfsOfShape.
+Existing Class DSupsOfShape.
+Hint Mode InfsOfShape ! ! - - : typeclass_instances.
+Hint Mode SupsOfShape ! ! - - : typeclass_instances.
+Hint Mode DInfsOfShape ! ! - : typeclass_instances.
+Hint Mode DSupsOfShape ! ! - : typeclass_instances.
+Instance ios_def `{IOS : InfsOfShape R X} {J : R -> X} `{!Functor J} : HasInf J
+  := IOS J _.
+Instance sos_def `{SOS : SupsOfShape R X} {J : R -> X} `{!Functor J} : HasSup J
+  := SOS J _.
+Instance dios_def `{DIOS : DInfsOfShape R X} {J : R -> X} : HasInf J
+  := DIOS J.
+Instance dsos_def `{DSOS : DSupsOfShape R X} {J : R -> X} : HasSup J
+  := DSOS J.
+*)
+
+Notation InfsOfShape R X := (forall J : R -> X, Functor J -> HasInf J).
+Notation SupsOfShape R X := (forall J : R -> X, Functor J -> HasSup J).
+Notation DInfsOfShape R X := (forall J : R -> X, HasInf J).
+Notation DSupsOfShape R X := (forall J : R -> X, HasSup J).
+
+Lemma inf_from_discrete : forall {R} `{Proset X} {J : R -> X},
+    HasInf (J ∘ get_discrete) -> HasInf J.
+Proof. done. Defined.
+Lemma sup_from_discrete : forall {R} `{Proset X} {J : R -> X},
+    HasSup (J ∘ get_discrete) -> HasSup J.
+Proof. done. Defined.
+Lemma infs_from_discrete : forall `{Proset X, Proset R},
+    InfsOfShape (discrete R) X -> DInfsOfShape R X.
+Proof. move=> X ? R ? IOS J.
+       exists (inf (J ∘ get_discrete)); apply: is_inf. Defined.
+Lemma sups_from_discrete : forall `{Proset X, Proset R},
+    SupsOfShape (discrete R) X -> DSupsOfShape R X.
+Proof. move=> X ? R ? SOS J; exists (sup (J ∘ get_discrete)); apply: is_sup. Defined.
+
+Notation MeetSemilattice X := (forall `{EqDecision R}, Finite R -> DInfsOfShape R X).
+Notation JoinSemilattice X := (forall `{EqDecision R}, Finite R -> DSupsOfShape R X).
+Class Lattice (X : Type) `{!Proset X, !MeetSemilattice X, !JoinSemilattice X}.
+Hint Mode Lattice ! - - - : typeclass_instances.
+Instance lattice_def `{Proset X, !MeetSemilattice X, !JoinSemilattice X}
+  : Lattice X := {}.
+Notation InfLattice X := (forall R, DInfsOfShape R X).
+Notation SupLattice X := (forall R, DSupsOfShape R X).
+Class Complete (X : Type) `{!Proset X, !InfLattice X, !SupLattice X}.
+Hint Mode Complete ! - - - : typeclass_instances.
+Instance complete_def `{Proset X, !InfLattice X, !SupLattice X}
+  : Complete X := {}.
+
+Class Directed (X : Type) `{!Proset X} :=
+  direct : forall `{Finite R} (J : R -> X), exists A, upper_bound J A.
+Instance join_semilattice_directed `{Proset X, !JoinSemilattice X} : Directed X.
+Proof. move=> R ? ? J; exists (sup J); apply/sup_ub. Qed.
+Notation DirectedComplete X := (forall `{Proset R}, Directed R -> SupsOfShape R X).
+
+Program Instance prop_inflattice {R} {J : R -> Prop} : HasInf J := {| inf := all J |}.
+Solve All Obligations with firstorder.
+Program Instance prop_suplattice {R} {J : R -> Prop} : HasSup J := {| sup := ex J |}.
+Solve All Obligations with firstorder.
+
+(* This could probably follow by some abstract nonsense if we moved it *after*
+   presheaf stuff... Hmm. Oh well. *)
+Definition ub_diagram `{Proset X} {R} (J : R -> X) : sig (upper_bound J) -> X
+  := sval.
+Definition lb_diagram `{Proset X} {R} (J : R -> X) : sig (lower_bound J) -> X
+  := sval.
+Arguments ub_diagram _ /.
+Arguments lb_diagram _ /.
+Lemma ub_diagram_spec : forall `{Proset X} {R} {J : R -> X} {A},
+    glb (ub_diagram J) A <-> lub J A.
+Proof.
+  move=> X ? R J A; split=> [Glb | Lub].
+  - pose H := {| inf := A; is_inf := Glb |}; change A with (inf (ub_diagram J)); split.
+    + move=> r; apply/inf_right => -[B UB] //=.
+    + move=> B UB; by apply/(inf_left (B ↾ UB)).
+  - pose H := {| sup := A; is_sup := Lub |}; change A with (sup J); split.
+    + move=> [B UB]; apply/sup_left => r //=.
+    + move=> B LB; apply/(LB (sup J ↾ _))/sup_ub.
+Qed.
+Lemma lb_diagram_spec : forall `{Proset X} {R} {J : R -> X} {A},
+    lub (lb_diagram J) A <-> glb J A.
+Proof.
+  move=> X ? R J A; split=> [Lub | Glb].
+  - pose H := {| sup := A; is_sup := Lub |}; change A with (sup (lb_diagram J)); split.
+    + move=> r; apply/sup_left => -[B LB] //=.
+    + move=> B LB; by apply/(sup_right (B ↾ LB)).
+  - pose H := {| inf := A; is_inf := Glb |}; change A with (inf J); split.
+    + move=> [B LB]; apply/inf_right => r //=.
+    + move=> B UB; apply/(UB (inf J ↾ _))/inf_lb.
+Qed.
+Definition infs_sufficient `{Proset X, !InfLattice X} : SupLattice X
+  := fun R J => {| sup := inf (ub_diagram J); is_sup := proj1 ub_diagram_spec (is_inf _) |}.
+Definition sups_sufficient `{Proset X, !SupLattice X} : InfLattice X
+  := fun R J => {| inf := sup (lb_diagram J); is_inf := proj1 lb_diagram_spec (is_sup _) |}.
+
+Lemma inf_unique : forall `{Proset X} {R} {A} {J : R -> X} `{!HasInf J},
+    glb J A <-> A ⟛ inf J.
+Proof.
+  move=> ? ? ? ? ? J; split.
+  - move=> H; apply/(greatest_unique H (is_inf _)).
+  - move=> E; rewrite E; apply: is_inf.
+Qed.
+Lemma sup_unique : forall `{Proset X} {R} {A} {J : R -> X} `{!HasSup J},
+    lub J A <-> A ⟛ sup J.
+Proof.
+  move=> ? ? ? ? ? J; split.
+  - move=> H; apply/(least_unique H (is_sup _)).
+  - move=> E; rewrite E; apply: is_sup.
+Qed.
+
+Program Instance pw_inf {X} `{Proset Y} {R} {J : R -> X -> Y} `{!forall x, HasInf (flip J x)}
+  : HasInf J
+  := {| inf x := inf (flip J x) |}.
+Next Obligation.
+  move=> X Y ? R J ?; split=> [r | F LB] A.
+  - apply/inf_lb.
+  - apply/inf_right; firstorder.
+Qed.
+Program Instance pw_sup {X} `{Proset Y} {R} {J : R -> X -> Y} `{!forall x, HasSup (flip J x)}
+  : HasSup J
+  := {| sup x := sup (flip J x) |}.
+Next Obligation.
+  move=> X Y ? R J ?; split=> [r | F UB] A.
+  - apply/sup_ub.
+  - apply/sup_left; firstorder.
+Qed.
+Program Instance op_inf `{Proset X} {R} {J : R -> op X} `{!HasSup (get_op ∘ J)}
+  : HasInf J
+  := {| inf := Op (sup (get_op ∘ J)) |}.
+Next Obligation.
+  move=> X ? R J ?; split=> [r | [A] LB] /=.
+  - apply/sup_right; by simpl.
+  - apply/sup_left; firstorder.
+Qed.
+Program Instance op_sup `{Proset X} {R} {J : R -> op X} `{!HasInf (get_op ∘ J)}
+  : HasSup J
+  := {| sup := Op (inf (get_op ∘ J)) |}.
+Next Obligation.
+  move=> X ? R J ?; split=> [r | [A] UB] /=.
+  - apply/inf_left; by simpl.
+  - apply/inf_right; firstorder.
+Qed.
+Lemma curry_dep : forall {A B} {P : A * B -> Prop}, (forall p, P p) <-> (forall a b, P (a, b)).
+Proof. move=> A B P; split=> [H a b | H [a b]] //. Qed.
+Lemma uncurry_dep : forall {A B} {P : A -> B -> Prop}, (forall a b, P a b) <-> (forall p, P p.1 p.2).
+Proof. move=> A B P; split=> [H p | H a b] //; apply: (H (a, b)). Qed.
+Lemma prod_lb : forall `{Proset X, Proset Y} {R} {p} {J : R -> X * Y},
+    lower_bound J p <-> lower_bound (fst ∘ J) p.1 /\ lower_bound (snd ∘ J) p.2.
+Proof. firstorder. Qed.
+Lemma prod_ub : forall `{Proset X, Proset Y} {R} {J : R -> X * Y} {p},
+    upper_bound J p <-> upper_bound (fst ∘ J) p.1 /\ upper_bound (snd ∘ J) p.2.
+Proof. firstorder. Qed.
+Program Instance prod_inf `{Proset X, Proset Y} {R} {J : R -> X * Y}
+        `{!HasInf (fst ∘ J), !HasInf (snd ∘ J)}
+  : HasInf J
+  := {| inf := (inf (fst ∘ J), inf (snd ∘ J)) |}.
+Next Obligation.
+  move=> ? ? ? ? ? J ? ?.
+  rewrite /greatest curry_dep; setoid_rewrite (prod_lb (J:=J)); simpl.
+  setoid_rewrite inf_universal; firstorder.
+Qed.
+Program Instance prod_sup `{Proset X, Proset Y} {R} {J : R -> X * Y}
+        `{!HasSup (fst ∘ J), !HasSup (snd ∘ J)}
+  : HasSup J
+  := {| sup := (sup (fst ∘ J), sup (snd ∘ J)) |}.
+Next Obligation.
+  move=> ? ? ? ? ? J ? ?.
+  rewrite /least curry_dep; setoid_rewrite (prod_ub (J:=J)); simpl.
+  setoid_rewrite sup_universal; firstorder.
+Qed.
+(*
+Lemma op_lb_ub : forall `{Proset X} {R},
+*)
+
+Notation Top X := (DInfsOfShape void X).
+Notation Bot X := (DSupsOfShape void X).
+Notation BinMeets X := (DInfsOfShape bool X).
+Notation BinJoins X := (DSupsOfShape bool X).
+Definition top (X : Type) `{!Proset X, !Top X} : X :=
+  inf (of_void _).
+Definition bot (X : Type) `{!Proset X, !Bot X} : X :=
+  sup (of_void _).
+Notation "⊤" := (top _) : proset_scope.
+Notation "⊥" := (bot _) : proset_scope.
+Definition meet `{Proset X, !BinMeets X} (A B : X) : X :=
+  inf (fun b : bool => if b then A else B).
+Definition join `{Proset X, !BinJoins X} (A B : X) : X :=
+  sup (fun b : bool => if b then A else B).
+Infix "⩕" := meet (at level 40, left associativity) : proset_scope.
+Infix "⩖" := join (at level 40, left associativity) : proset_scope.
+(* TODO This type could technically be less strict... *)
+Definition embed_prop `{Complete X} (P : Prop) : X := sup (fun H : P => ⊤).
+Notation "⌜ P ⌝" := (embed_prop P) : proset_scope.
+Arguments top : simpl never.
+Arguments bot : simpl never.
+Arguments meet : simpl never.
+Arguments join : simpl never.
+Arguments embed_prop : simpl never.
+
+Definition top_right `{Proset X, !Top X} {A : X} : A ⊢ ⊤ :=
+  inf_right (Empty_set_ind _).
+Definition bot_left `{Proset X, !Bot X} {A : X} : ⊥ ⊢ A :=
+  sup_left (Empty_set_ind _).
+Definition meet_proj1 `{Proset X, !BinMeets X} {A B : X} : A ⩕ B ⊢ A
+  := inf_lb true.
+Definition meet_proj2 `{Proset X, !BinMeets X} {A B : X} : A ⩕ B ⊢ B
+  := inf_lb false.
+Definition meet_left1 `{Proset X, !BinMeets X} {A B C : X} : A ⊢ C -> A ⩕ B ⊢ C
+  := transitivity meet_proj1.
+Definition meet_left2 `{Proset X, !BinMeets X} {A B C : X} : B ⊢ C -> A ⩕ B ⊢ C
+  := transitivity meet_proj2.
+Definition meet_right `{Proset X, !BinMeets X} {C A B : X} (D1 : C ⊢ A) (D2 : C ⊢ B)
+  : C ⊢ A ⩕ B
+  := inf_right (fun b => if b as b0 return C ⊢ (if b0 then A else B) then D1 else D2).
+Definition join_inj1 `{Proset X, !BinJoins X} {A B : X} : A ⊢ A ⩖ B
+  := sup_ub true.
+Definition join_inj2 `{Proset X, !BinJoins X} {A B : X} : B ⊢ A ⩖ B
+  := sup_ub false.
+Definition join_right1 `{Proset X, !BinJoins X} {C A B : X} : C ⊢ A -> C ⊢ A ⩖ B
+  := fun H => transitivity H join_inj1.
+Definition join_right2 `{Proset X, !BinJoins X} {C A B : X} : C ⊢ B -> C ⊢ A ⩖ B
+  := fun H => transitivity H join_inj2.
+Definition join_left `{Proset X, !BinJoins X} {A B C : X} (D1 : A ⊢ C) (D2 : B ⊢ C)
+  : A ⩖ B ⊢ C
+  := sup_left (fun b => if b as b0 return (if b0 then A else B) ⊢ C then D1 else D2).
+Lemma embed_prop_left : forall `{Complete X} {P : Prop} {Q : X},
+    (P -> ⊤ ⊢ Q) -> ⌜ P ⌝ ⊢ Q.
+Proof. move=> X ? ? ? ? P Q D; by apply: sup_left. Qed.
+Lemma embed_prop_right : forall `{Complete X} {P : X} {Q : Prop},
+    Q -> P ⊢ embed_prop Q.
+Proof. move=> *; apply/sup_right/top_right. Qed.
+
+Program Definition build_meet_semilattice (X : Type) `{!Proset X, !Top X, !BinMeets X}
+  : MeetSemilattice X
+  := fun R _ _ J => {| inf := foldr meet ⊤ (map J (enum R)) |}.
+Next Obligation.
+  move=> X ? ? ? R ? ? J.
+  rewrite /greatest /lower_bound; setoid_rewrite <- Forall_finite.
+  elim: (enum R) => /= [| r rs [IH1 IH2]]; split.
+  - done.
+  - move=> *; apply/top_right.
+  - constructor.
+    + apply/meet_proj1.
+    + apply: Forall_impl IH1 (fun _ => meet_left2).
+  - move=> B /Forall_cons [? /IH2 ?]; by apply/meet_right.
+Qed.
+Program Definition build_join_semilattice (X : Type) `{!Proset X, !Bot X, !BinJoins X}
+  : JoinSemilattice X
+  := fun R _ _ J => {| sup := foldr join ⊥ (map J (enum R)) |}.
+Next Obligation.
+  move=> X ? ? ? R ? ? J.
+  rewrite /least /upper_bound; setoid_rewrite <- Forall_finite.
+  elim: (enum R) => /= [| r rs [IH1 IH2]]; split.
+  - done.
+  - move=> *; apply/bot_left.
+  - constructor.
+    + apply/join_inj1.
+    + apply: Forall_impl IH1 (fun _ => join_right2).
+  - move=> B /Forall_cons [? /IH2 ?]; by apply/join_left.
+Qed.
+
+Program Instance nat_join_semilattice : JoinSemilattice nat
+  := @build_join_semilattice nat _ (fun _ => {| sup := 0 |})
+                             (fun J => {| sup := max (J true) (J false) |}).
+Next Obligation. compute; dintuition. Qed.
+Next Obligation.
+  move=> J; split.
+  - move=> []; [apply: Nat.le_max_l | apply: Nat.le_max_r].
+  - move=> n UB; apply: Nat.max_lub; apply: UB.
+Qed.
+Program Instance bool_meet_semilattice : MeetSemilattice bool
+  := @build_meet_semilattice bool _ (fun _ => {| inf := true |})
+                             (fun J => {| inf := andb (J true) (J false) |}).
+Next Obligation. compute; split; [dintuition | case; dintuition]. Qed.
+Next Obligation.
+  move=> J; split.
+  - move=> []; apply/implyP => /andP [//].
+  - move=> b LB; apply/implyP => H; apply/andP; split; by apply/(implyP (LB _)).
+Qed.
+Program Instance bool_join_semilattice : JoinSemilattice bool
+  := @build_join_semilattice bool _ (fun _ => {| sup := false |})
+                             (fun J => {| sup := orb (J true) (J false) |}).
+Next Obligation. compute; split; [dintuition | case; dintuition]. Qed.
+Next Obligation.
+  move=> J; split.
+  - move=> []; apply/implyP => H; apply/orP; auto.
+  - move=> b UB; apply/implyP => /orP [] /(implyP (UB _)) //.
+Qed.
+
+Instance cartesian_monoidal `{Proset X, !MeetSemilattice X}
+  : Monoidal (X:=X) pro_le meet ⊤.
+Proof.
+  constructor.
+  - move=> A A' B B' D1 D2; apply/meet_right.
+    + by apply/meet_left1.
+    + by apply/meet_left2.
+  - move=> A; split.
+    + apply/meet_proj2.
+    + apply/meet_right; [apply/top_right | done].
+  - move=> A; split.
+    + apply/meet_proj1.
+    + apply/meet_right; [done | apply/top_right].
+  - split; repeat apply/meet_right.
+    + apply/meet_proj1.
+    + apply/meet_left2/meet_proj1.
+    + apply/meet_left2/meet_proj2.
+    + apply/meet_left1/meet_proj1.
+    + apply/meet_left1/meet_proj2.
+    + apply/meet_proj2.
+Qed.
+Instance cocartesian_monoidal `{Proset X, !JoinSemilattice X}
+  : Monoidal (X:=X) pro_le join ⊥.
+Proof.
+  constructor.
+  - move=> A A' B B' D1 D2; apply/join_left.
+    + by apply/join_right1.
+    + by apply/join_right2.
+  - move=> A; split.
+    + apply/join_left; [apply/bot_left | done].
+    + apply/join_inj2.
+  - move=> A; split.
+    + apply/join_left; [done | apply/bot_left].
+    + apply/join_inj1.
+  - split; repeat apply/join_left.
+    + apply/join_right1/join_inj1.
+    + apply/join_right1/join_inj2.
+    + apply/join_inj2.
+    + apply/join_inj1.
+    + apply/join_right2/join_inj1.
+    + apply/join_right2/join_inj2.
+Qed.
+Instance cartesian_sym `{Proset X, !MeetSemilattice X} : Sym (X:=X) pro_le meet.
+Proof. move=> A B; apply/(meet_right meet_proj2 meet_proj1). Qed.
+Instance cocartesian_sym `{Proset X, !JoinSemilattice X} : Sym (X:=X) pro_le join.
+Proof. move=> A B; apply/(join_left join_inj2 join_inj1). Qed.
+
+Class PreservesInf `{Proset X, Proset Y} {R} (F : X -> Y) (J : R -> X) :=
+  preserve_inf : forall A, glb J A -> glb (F ∘ J) (F A).
+Class PreservesSup `{Proset X, Proset Y} {R} (F : X -> Y) (J : R -> X) :=
+  preserve_sup : forall A, lub J A -> lub (F ∘ J) (F A).
+Hint Mode PreservesInf ! - ! - ! ! ! : typeclass_instances.
+Hint Mode PreservesSup ! - ! - ! ! ! : typeclass_instances.
+Lemma preserves_inf_alt1 : forall `{Proset X, Proset Y} {R} {F : X -> Y} {J : R -> X}
+                            `{!Functor F, !HasInf J},
+    PreservesInf F J <-> glb (F ∘ J) (F (inf J)).
+Proof.
+  move=> *; split.
+  - move=> ?; apply/preserve_inf/is_inf.
+  - move=> Glb A /inf_unique E; rewrite E //.
+Qed.
+Lemma preserves_sup_alt1 : forall `{Proset X, Proset Y} {R} {F : X -> Y} {J : R -> X}
+                             `{!Functor F, !HasSup J},
+    PreservesSup F J <-> lub (F ∘ J) (F (sup J)).
+Proof.
+  move=> *; split.
+  - move=> ?; apply/preserve_sup/is_sup.
+  - move=> Lub A /sup_unique E; rewrite E //.
+Qed.
+Lemma preserves_inf_alt2 : forall `{Proset X, Proset Y} {R} {F : X -> Y} {J : R -> X}
+                             `{!Functor F, !HasInf J, !HasInf (F ∘ J)},
+    PreservesInf F J <-> F (inf J) ⟛ inf (fun r => F (J r)).
+Proof. move=> *; rewrite preserves_inf_alt1; apply: inf_unique. Qed.
+Lemma preserves_sup_alt2 : forall `{Proset X, Proset Y} {R} {F : X -> Y} {J : R -> X}
+                             `{!Functor F, !HasSup J, !HasSup (F ∘ J)},
+    PreservesSup F J <-> F (sup J) ⟛ sup (fun r => F (J r)).
+Proof. move=> *; rewrite preserves_sup_alt1; apply: sup_unique. Qed.
+Lemma distrib_inf : forall `{Proset X, Proset Y} {R} (J : R -> X)
+                      {F : X -> Y} `{!PreservesInf F J} `{!HasInf J, !HasInf (F ∘ J)},
+    F (inf J) ⟛ inf (fun r => F (J r)).
+Proof. move=> *; apply/inf_unique/preserve_inf/is_inf. Qed.
+Lemma distrib_sup : forall `{Proset X, Proset Y} {R} (J : R -> X)
+                      {F : X -> Y} `{!PreservesSup F J} `{!HasSup J, !HasSup (F ∘ J)},
+    F (sup J) ⟛ sup (fun r => F (J r)).
+Proof. move=> *; apply/sup_unique/preserve_sup/is_sup. Qed.
+
+Notation PresInfsOfShape R F := (forall J, Functor J -> PreservesInf (R:=R) F J).
+Notation PresSupsOfShape R F := (forall J, Functor J -> PreservesSup (R:=R) F J).
+Notation PresDInfsOfShape R F := (forall J, PreservesInf (R:=R) F J).
+Notation PresDSupsOfShape R F := (forall J, PreservesSup (R:=R) F J).
+Notation Continuous F := (forall R, PresDInfsOfShape R F).
+Notation Cocontinuous F := (forall R, PresDSupsOfShape R F).
+Notation Lex F := (forall `{H : EqDecision R}, @Finite R H -> PresDInfsOfShape R F).
+Notation Rex F := (forall `{H : EqDecision R}, @Finite R H -> PresDSupsOfShape R F).
+Notation ScottContinuous F :=
+  (forall `{H : Proset R}, @Directed R H -> PresSupsOfShape R F).
+
+(* Example *)
+Definition fixed_point `{Proset X} (F : X -> X) (A : X) : Prop
+  := F A ⟛ A.
+Definition kleene_chain `{Proset X, !Bot X} (F : X -> X) : nat -> X
+  := fun n => Nat.iter n F ⊥.
+Lemma kleene_chain_increasing : forall `{Proset X, !Bot X} {F : X -> X} `{!Functor F} {n},
+    kleene_chain F n ⊢ F (kleene_chain F n).
+Proof. move=> X ? ? F ?; elim=> /= [| n]; [apply/bot_left | apply/fmap']. Qed.
+Instance kleene_chain_chain `{Proset X, !Bot X} {F : X -> X} `{!Functor F}
+  : Functor (kleene_chain F).
+Proof. apply/nat_functor/@kleene_chain_increasing. Qed.
+Theorem kleene : forall `{Proset X, !DirectedComplete X, !Bot X} {F : X -> X}
+                   `{!Functor F, !ScottContinuous F},
+    least (fixed_point F) (sup (kleene_chain F)).
+Proof.
+  move=> X ? ? ? F ? ?; split.
+  - rewrite /fixed_point distrib_sup; split; apply/sup_left => n.
+    + by apply/(sup_right (S n)).
+    + apply/(sup_right n)/kleene_chain_increasing.
+  - move=> A FP; apply/sup_left; elim=> /= [| n].
+    + apply/bot_left.
+    + move=> D; unfold fixed_point in FP.
+      setoid_rewrite <- (proj1 FP); by apply/fmap'.
+Qed.
+(*
+Class Continuous `{Proset X, Proset Y} (F : X -> Y) :=
+  distrib_glb : forall {R} (J : R -> X) `{!HasInf J}, glb (F ∘ J) (F (inf J)).
+Class Cocontinuous `{Proset X, Proset Y} (F : X -> Y) :=
+  distrib_lub : forall {R} (J : R -> X) `{!HasSup J}, lub (F ∘ J) (F (sup J)).
+Hint Mode Continuous ! - ! - ! : typeclass_instances.
+Hint Mode Cocontinuous ! - ! - ! : typeclass_instances.
+*)
+
+Lemma F_inf : forall `{Proset X, Proset Y} {R} {F : X -> Y} {J : R -> X}
+                `{!Functor F, !HasInf J, !HasInf (F ∘ J)},
+    F (inf J) ⊢ inf (fun r => F (J r)).
+Proof. move=> *; apply/inf_right => r; apply/fmap'/inf_lb. Qed.
+Lemma F_sup : forall `{Proset X, Proset Y} {R} {F : X -> Y} {J : R -> X}
+                `{!Functor F, !HasSup J, !HasSup (F ∘ J)},
+    sup (fun r => F (J r)) ⊢ F (sup J).
+Proof. move=> *; apply/sup_left => r; apply/fmap'/sup_ub. Qed.
+Lemma distrib_inf_sufficient : forall `{Complete X, Complete Y} {F : X -> Y} `{!Functor F},
+    (forall {R} (J : R -> X), inf (F ∘ J) ⊢ F (inf J)) -> Continuous F.
+Proof.
+  move=> X ? ? ? ? Y ? ? ? ? F ? Distr R J.
+  apply/preserves_inf_alt2; split; [apply/F_inf | apply/Distr].
+Qed.
+Lemma distrib_sup_sufficient : forall `{Complete X, Complete Y} {F : X -> Y} `{!Functor F},
+    (forall {R} (J : R -> X), F (sup J) ⊢ sup (F ∘ J)) -> Cocontinuous F.
+Proof.
+  move=> X ? ? ? ? Y ? ? ? ? F ? Distr R J.
+  apply/preserves_sup_alt2; split; [apply/Distr | apply/F_sup].
+Qed.
+
+Lemma full_reflects_inf : forall `{Functor X Y F, !Full F} {R} (J : R -> X) A,
+    glb (F ∘ J) (F A) -> glb J A.
+Proof.
+  move=> X ? Y ? F ? ? R J A Glb; split=> [r | A' LB].
+  - apply/(unfmap (F:=F))/(proj1 Glb).
+  - apply/(unfmap (F:=F))/(proj2 Glb) => r /=; apply/fmap'/LB.
+Qed.
+Lemma full_reflects_sup : forall `{Functor X Y F, !Full F} {R} (J : R -> X) A,
+    lub (F ∘ J) (F A) -> lub J A.
+Proof.
+  move=> X ? Y ? F ? ? R J A Lub; split=> [r | A' UB].
+  - apply/(unfmap (F:=F))/(proj1 Lub).
+  - apply/(unfmap (F:=F))/(proj2 Lub) => r /=; apply/fmap'/UB.
+Qed.
+Lemma full_undistrib_inf : forall `{Functor X Y F, !Full F} {R} (J : R -> X)
+                             `{!HasInf (F ∘ J)} A,
+    F A ⟛ inf (F ∘ J) -> glb J A.
+Proof. move=> ? ? ? ? ? ? ? ? ? ? ? /inf_unique; apply: full_reflects_inf. Qed.
+Lemma full_undistrib_sup : forall `{Functor X Y F, !Full F} {R} (J : R -> X)
+                             `{!HasSup (F ∘ J)} A,
+    F A ⟛ sup (F ∘ J) -> lub J A.
+Proof. move=> ? ? ? ? ? ? ? ? ? ? ? /sup_unique; apply: full_reflects_sup. Qed.
+
+(*
+Instance op_continuous1 `{Functor X Y F, !Continuous F}
+  : Cocontinuous (Op ∘ F ∘ get_op).
+Proof.
+  move=> R J A [C U].
+  split=> [r | [A']] /=.
+  - move: (C r); move: (A) (J r) => [?] [?] /=; apply/fmap'.
+  - apply: C'. (U (Op (F (get_op A)))). A')).
+*)
+
+Instance inf_functor {R} `{Proset X, !DInfsOfShape R X}
+  : Functor (fun J : R -> X => inf J).
+Proof. move=> A B D; apply/inf_right => r; by apply/inf_left. Qed.
+Instance inf_laxmon {R} `{MonSet X, !DInfsOfShape R X} : LaxMon (fun J : R -> X => inf J).
+Proof.
+  constructor=> [| A B].
+  - apply: inf_right => A //.
+  - apply: inf_right => r; apply: bimap; apply/inf_lb.
+Qed.
+Instance sup_functor {R} `{Proset X, !DSupsOfShape R X}
+  : Functor (fun J : R -> X => sup J).
+Proof. move=> A B D; apply/sup_left => r; by apply/sup_right. Qed.
+Instance sup_oplaxmon {R} `{MonSet X, !DSupsOfShape R X}
+  : OplaxMon (fun J : R -> X => sup J).
+Proof.
+  constructor=> [| A B].
+  - apply: sup_left => A //.
+  - apply: sup_left => r; apply: bimap; apply/sup_ub.
+Qed.
+
+(*
+Instance lex_def `{Proset X, Proset Y} {F : X -> Y} `{!Lex F} `{Finite R} {J : R -> X}
+  : PreservesInf F J := preserve_inf.
+*)
+Lemma distrib_top : forall `{Proset X, Proset Y, !Top X, !Top Y}
+                      {F : X -> Y} `{!Lex F},
+    F ⊤ ⟛ ⊤.
+Proof. move=> *; rewrite distrib_inf; by apply/(fmap_core (H1:=inf_functor))/pw_core'. Qed.
+Lemma distrib_bot : forall `{Proset X, Proset Y, !Bot X, !Bot Y}
+                      {F : X -> Y} `{!Rex F},
+    F ⊥ ⟛ ⊥.
+Proof. move=> *; rewrite distrib_sup; by apply/(fmap_core (H1:=sup_functor))/pw_core'. Qed.
+Lemma distrib_meet : forall `{Proset X, Proset Y, !BinMeets X, !BinMeets Y}
+                       {F : X -> Y} `{!Lex F} {A B},
+    F (A ⩕ B) ⟛ F A ⩕ F B.
+Proof.
+  move=> *; rewrite distrib_inf; apply/(fmap_core (H1:=inf_functor))/pw_core' => -[] //.
+Qed.
+Lemma distrib_join : forall `{Proset X, Proset Y, !BinJoins X, !BinJoins Y}
+                       {F : X -> Y} `{!Rex F} {A B},
+    F (A ⩖ B) ⟛ F A ⩖ F B.
+Proof.
+  move=> *; rewrite distrib_sup; apply/(fmap_core (H1:=sup_functor))/pw_core' => -[] //.
+Qed.
+Lemma distrib_embed_prop : forall `{Complete X, Complete Y} {F : X -> Y}
+                             `{!Lex F, !Cocontinuous F} {P},
+    F (embed_prop P) ⟛ embed_prop P.
+Proof.
+  move=> *; rewrite distrib_sup; apply/(fmap_core (H1:=sup_functor))/pw_core' => H /=.
+  apply/distrib_top.
+Qed.
+
+Instance id_continuous `{Proset X} : Continuous (@id X).
+Proof. firstorder. Qed.
+Instance id_cocontinuous `{Proset X} : Cocontinuous (@id X).
+Proof. firstorder. Qed.
+Instance compose_continuous `{Proset X, Proset Y, Proset Z'} {F : Y -> Z'} {G : X -> Y}
+         `{!Functor F, !Functor G, !Continuous F, !Continuous G} : Continuous (F ∘ G) | 0.
+Proof. move=> ? ? ? ? /=; by apply/(preserve_inf (F:=F))/(preserve_inf (F:=G)). Qed.
+Instance compose_cocontinuous `{Proset X, Proset Y, Proset Z'} {F : Y -> Z'} {G : X -> Y}
+         `{!Functor F, !Functor G, !Cocontinuous F, !Cocontinuous G}
+  : Cocontinuous (F ∘ G) | 0.
+Proof. move=> ? ? ? ? /=; by apply/(preserve_sup (F:=F))/(preserve_sup (F:=G)). Qed.
+Instance subst_continuous1 {Y Y'} `{Complete X} {f : Y' -> Y}
+  : Continuous (fun g : Y -> X => g ∘ f).
+Proof. by apply/distrib_inf_sufficient. Qed.
+Instance subst_cocontinuous1 {Y Y'} `{Complete X} {f : Y' -> Y}
+  : Cocontinuous (fun g : Y -> X => g ∘ f).
+Proof. by apply/distrib_sup_sufficient. Qed.
+Instance subst_continuous2 {Y} `{Complete X} {y : Y} : Continuous (eval_at (X:=X) y).
+Proof. by apply/distrib_inf_sufficient. Qed.
+Instance subst_cocontinuous2 {Y} `{Complete X} {y : Y}
+  : Cocontinuous (eval_at (X:=X) y).
+Proof. by apply/distrib_sup_sufficient. Qed.
+(*
+Instance fst_continuous `{Proset X, Proset Y} : Continuous (@fst X Y).
+Proof. move=> R [A B] J /=; rewrite prod_inf_cone /=; tauto. Qed.
+Instance fst_cocontinuous `{Proset X, Proset Y} : Cocontinuous (@fst X Y).
+Proof. move=> R J [A B] /=; rewrite prod_colim_cocone /=; tauto. Qed.
+Instance snd_continuous `{Proset X, Proset Y} : Continuous (@snd X Y).
+Proof. move=> R [A B] J /=; rewrite prod_lim_cone /=; tauto. Qed.
+Instance snd_cocontinuous `{Proset X, Proset Y} : Cocontinuous (@snd X Y).
+Proof. move=> R J [A B] /=; rewrite prod_colim_cocone /=; tauto. Qed.
+Instance prod_map_continuous `{Proset X, Proset X', Proset Y, Proset Y'} {F : X -> X'}
+         {G : Y -> Y'} `{!Functor F, !Functor G, !Continuous F, !Continuous G}
+  : Continuous (prod_map F G).
+Proof.
+  move=> R [A B] J /= /prod_lim_cone /= [L1 L2].
+  apply/prod_lim_cone; split; simpl; by apply/distrib_lim_cone.
+Qed.
+Instance prod_map_cocontinuous `{Proset X, Proset X', Proset Y, Proset Y'} {F : X -> X'}
+         {G : Y -> Y'} `{!Functor F, !Functor G, !Cocontinuous F, !Cocontinuous G}
+  : Cocontinuous (prod_map F G).
+Proof.
+  move=> R J [A B] /= /prod_colim_cocone /= [L1 L2].
+  apply/prod_colim_cocone; split; simpl.
+  - by apply/(distrib_colim_cocone (F:=F)).
+  - by apply/(distrib_colim_cocone (F:=G)).
+Qed.
+*)
+
+
+Class ClosedMonoidal {X} (R : X -> X -> Prop) (T : X -> X -> X) (H : X -> X -> X) :=
+  tensor_hom A B C : R (T A B) C <-> R A (H B C).
+Hint Mode ClosedMonoidal ! ! ! - : typeclass_instances.
+Hint Mode ClosedMonoidal ! ! - ! : typeclass_instances.
+Class LClosedMonoidal {X} (R : X -> X -> Prop) (T : X -> X -> X) (H : X -> X -> X) :=
+  l_tensor_hom A B C : R (T B A) C <-> R A (H B C).
+Hint Mode LClosedMonoidal ! ! ! - : typeclass_instances.
+Hint Mode LClosedMonoidal ! ! - ! : typeclass_instances.
+Class ClosedMonSet (X : Type) `{MonSet X} :=
+  {internal_hom : X -> X -> X;
+   pro_tensor_hom :> ClosedMonoidal pro_le pro_tens internal_hom}.
+Hint Mode ClosedMonSet ! - - : typeclass_instances.
+Infix "⊸" := internal_hom (at level 40) : proset_scope.
+Class LClosedMonSet (X : Type) `{MonSet X} :=
+  {l_internal_hom : X -> X -> X;
+   pro_l_tensor_hom :> LClosedMonoidal pro_le pro_tens l_internal_hom}.
+Hint Mode LClosedMonSet ! - - : typeclass_instances.
+Infix "⊸̂" := l_internal_hom (at level 40) : proset_scope.
+Class Exponents (X : Type) `{!Proset X, !BinMeets X} :=
+  {exponential : X -> X -> X;
+   meet_exponential A B C : A ⩕ B ⊢ C <-> A ⊢ exponential B C}.
+Hint Mode Exponents ! - - : typeclass_instances.
+Infix "⟿" := exponential (at level 40) : proset_scope.
+Program Instance sym_lclosed `{SymMonSet X, !ClosedMonSet X} : LClosedMonSet X | 2
+  := {| l_internal_hom := internal_hom |}.
+Next Obligation.
+  move=> X ? ? ? ? A B C; split.
+  - setoid_rewrite <- (proj2 (pro_sym' _ _)); apply pro_tensor_hom.
+  - setoid_rewrite pro_sym'; apply pro_tensor_hom.
+Qed.
+(*
+Set Printing Universes.
+Set Printing All.
+Program Instance prop_frame : @Frame Prop prop_proset prop_bicomplete
+  := {| exponential (P Q : Prop) := P -> Q |}.
+Proof.
+  move=> A B C; split.
+  - move=> D H1 H2; apply: D => -[] //.
+  - move=> D H1; apply: D; [apply: (H1 true) | apply: (H1 false)].
+Defined.
+*)
+Program Instance prop_cmset : ClosedMonSet Prop
+  := {| internal_hom (P Q : Prop) := P -> Q |}.
+Next Obligation. firstorder. Qed.
+
+(* TODO Move these *)
+Instance internal_hom_proper `{ClosedMonSet X}
+  : Proper (pro_le --> pro_le ++> pro_le) (internal_hom (X:=X)).
+Proof.
+  move=> A A' /= D1 B B' D2; rewrite -tensor_hom.
+  setoid_rewrite D1; setoid_rewrite <- D2; rewrite tensor_hom //.
+Qed.
+Instance internal_hom_proper' `{ClosedMonSet X}
+  : Proper (pro_le ++> pro_le --> flip pro_le) (internal_hom (X:=X)).
+Proof. move=> ? ? ? ? ? ? /=; by apply: internal_hom_proper. Qed.
+Instance l_internal_hom_proper `{LClosedMonSet X}
+  : Proper (pro_le --> pro_le ++> pro_le) (l_internal_hom (X:=X)).
+Proof.
+  move=> A A' /= D1 B B' D2; rewrite -l_tensor_hom.
+  setoid_rewrite D1; setoid_rewrite <- D2; rewrite l_tensor_hom //.
+Qed.
+Instance l_internal_hom_proper' `{LClosedMonSet X}
+  : Proper (pro_le ++> pro_le --> flip pro_le) (l_internal_hom (X:=X)).
+Proof. move=> ? ? ? ? ? ? /=; by apply: l_internal_hom_proper. Qed.
+
+(*
+Record discrete (A : Type) := Discrete {get_discrete : A}.
+Add Printing Constructor discrete.
+Arguments Discrete {_}.
+Arguments get_discrete {_}.
+Instance discrete_proset {A} : Proset (discrete A) := {| pro_le := eq |}.
+Instance discrete_functor {A} `{Proset Y} {F : discrete A -> Y} : Functor F | 3.
+Proof. move=> [a1] [a2] /= -> //. Qed.
+Instance get_discrete_functor `{Proset A} : Functor (@get_discrete A).
+Proof. move=> [a1] [a2] /= [->] //. Qed.
+*)
+
+Instance unit_proset : Proset () := {| pro_le _ _ := True |}.
+Program Instance unit_mset : MonSet () := {| memp := (); pro_tens _ _ := () |}.
+Next Obligation. done. Qed.
+Program Instance unit_smset : SymMonSet () := {}.
+Next Obligation. done. Qed.
+
+(* This brings Z into scope, which I tend to use as a variable name sometimes,
+   so this dummy definition will prevent me from accidentally using that Z when I thought
+   I was doing an implicit binder. *)
+Definition Z : () := ().
+Instance list_proset `{Proset X} : Proset (list X) :=
+  {| pro_le := Forall2 pro_le |}.
+Instance app_monoidal `{PreOrder X R}
+  : Monoidal (Forall2 R) app nil.
+Proof.
+  constructor.
+  - move=> As As' Bs Bs' D1 D2; by apply: Forall2_app.
+  - done.
+  - move=> As; rewrite app_nil_r //.
+  - move=> As Bs Cs; rewrite app_assoc //.
+Qed.
+Instance list_mset `{Proset X} : MonSet (list X)
+  := {| pro_tens := app |}.
+Instance list_map_functor `{Proset X, Proset Y} : Functor (fmap (M:=list) (A:=X) (B:=Y)).
+Proof. move=> F G D As; apply/Forall2_fmap/Forall2_impl; firstorder. Qed.
+Instance list_map_functor' `{Functor X Y F} : Functor (X:=list X) (fmap F).
+Proof. move=> As Bs D; apply/Forall2_fmap/Forall2_impl; [apply: D | done]. Qed.
+Instance list_map_strongmon `{Proset X, Proset Y} {F : X -> Y}
+  : StrongMon (fmap (M:=list) F).
+Proof. constructor; constructor=> // As Bs; rewrite fmap_app //. Qed.
+Instance cons_functor `{Proset X} : Functor (@cons X).
+Proof. by constructor. Qed.
+Instance cons_functor' `{Proset X} {A : X} : Functor (cons A).
+Proof. by constructor. Qed.
+Definition tens_all `{MonSet X} : list X -> X
+  := foldr pro_tens memp.
+Instance tens_all_functor `{MonSet X} : Functor (tens_all (X:=X)).
+Proof. move=> ? ?; elim=> //= A B As Bs D _ IH; setoid_rewrite D; by setoid_rewrite IH. Qed.
+Instance tens_all_strongmon `{MonSet X} : StrongMon (tens_all (X:=X)).
+Proof.
+  constructor; constructor=> //; elim=> /= [| A As IH] Bs.
+  - rewrite {2}/pro_tens /= pro_lunit //.
+  - rewrite -pro_massoc; by setoid_rewrite IH.
+  - rewrite {1}/pro_tens /=; apply pro_lunit.
+  - setoid_rewrite IH; rewrite pro_massoc //.
+Qed.
+Fixpoint tens_all' `{MonSet X} (l : list X) : X :=
+  match l with
+  | [] => memp
+  | [A] => A
+  | A :: As => A ⊗ tens_all' As
+  end.
+Lemma tens_all'_alt : forall `{MonSet X} {l : list X},
+    tens_all' l ⟛ tens_all l.
+Proof.
+  move=> X ? ?; elim=> //= A [| A' As] /= IH.
+  - rewrite pro_runit //.
+  - rewrite IH //.
+Qed.
+Instance tens_all'_functor `{MonSet X} : Functor (tens_all' (X:=X)).
+Proof.
+  move=> *; rewrite tens_all'_alt; setoid_rewrite <- (proj2 tens_all'_alt); by apply/fmap'.
+Qed.
+Instance tens_all'_strongmon `{MonSet X} : StrongMon (tens_all' (X:=X)).
+Proof.
+  constructor; constructor=> // *.
+  - rewrite 2!tens_all'_alt; setoid_rewrite <- (proj2 tens_all'_alt); apply/pres_tens.
+  - rewrite tens_all'_alt; setoid_rewrite <- (proj2 tens_all'_alt); apply/pres_tens_op.
+Qed.
+Instance mret_functor `{Proset X} : Functor (mret (M:=list) (A:=X)).
+Proof. by constructor. Qed.
+Definition list_sharp {X} `{MonSet Y} (F : X -> Y) : list X -> Y
+  := tens_all' ∘ fmap F.
+Definition list_flat {X Y} (F : list X -> Y) : X -> Y
+  := F ∘ mret.
+Fact list_sharp_signature `{Proset X, MonSet Y} {F : list X -> Y} `{!Functor F}
+  : TCAnd (Functor (list_sharp F)) (StrongMon (list_sharp F)).
+Proof. typeclasses eauto. Qed.
+Fact list_flat_signature `{Proset X, MonSet Y} {F : list X -> Y} `{!Functor F, !StrongMon F}
+  : Functor (list_flat F).
+Proof. typeclasses eauto. Qed.
+Lemma list_free_monoid1 : forall `{Proset X, MonSet Y} {F : list X -> Y} `{!StrongMon F},
+    list_sharp (list_flat F) ⟛ F.
+Proof.
+  move=> X ? Y ? ? F ?; apply/pw_core' => As.
+  rewrite /list_sharp; setoid_rewrite tens_all'_alt.
+  elim: As => /= [| A As IH].
+  - rewrite /list_sharp /list_flat /=; split.
+    + apply: (pres_memp (F:=F)).
+    + apply: (pres_memp_op (F:=F)).
+  - rewrite /list_sharp /list_flat /= -/fmap.
+    change (A :: As) with (mret A ⊗ As).
+    split.
+    + setoid_rewrite <- pres_tens; apply bimap; firstorder.
+    + setoid_rewrite pres_tens_op; apply bimap; firstorder.
+Qed.
+Lemma list_free_monoid2 : forall {X} `{MonSet Y} {F : X -> Y},
+    list_flat (list_sharp F) ⟛ F.
+Proof. split=> ? //=; apply pro_runit. Qed.
 
 
 (* !!!
@@ -1022,8 +1368,8 @@ Lemma transpose : forall `{Adjoint X Y F G, !Functor F, !Functor G}
     F A ⊢ B <-> A ⊢ G B.
 Proof.
   move=> X Pr_X Y Pr_Y F G Adj Funct_F Funct_G A B; split=> D.
-  - setoid_rewrite (adj_unit A); simpl; by apply: fmap'.
-  - setoid_rewrite <- (adj_counit B); simpl; by apply: fmap'.
+  - setoid_rewrite (adj_unit (Adjoint:=Adj) A); simpl; by apply: fmap'.
+  - setoid_rewrite <- (adj_counit (Adjoint:=Adj) B); simpl; by apply: fmap'.
 Qed.
 Arguments transpose {_ _ _ _ _ _ Adj _ _ _ _} : rename.
 Lemma transpose_sufficient : forall `{Proset X, Proset Y, !Functor F, !Functor G},
@@ -1036,14 +1382,14 @@ Qed.
 Lemma full_left_adjoint : forall `{Adjoint X Y F G, !Full F}, G ∘ F ⟛ id.
 Proof.
   move=> X ? Y ? F G Adj ?; split=> A /=.
-  - apply/unfmap/adj_counit.
-  - apply/adj_unit.
+  - apply/(unfmap (F:=F))/(adj_counit (F:=F)).
+  - apply/(adj_unit (F:=F)).
 Qed.
 Lemma full_right_adjoint : forall `{Adjoint X Y F G, !Full G}, F ∘ G ⟛ id.
 Proof.
   move=> X ? Y ? F G Adj ?; split=> A /=.
-  - apply/adj_counit.
-  - apply/unfmap/adj_unit.
+  - apply/(adj_counit (F:=F)).
+  - apply/(unfmap (F:=G))/(adj_unit (F:=F)).
 Qed.
 
 Instance left_adjoint_cocontinuous `{Proset X, Proset Y} {F : X -> Y} {G : Y -> X}
@@ -1051,19 +1397,20 @@ Instance left_adjoint_cocontinuous `{Proset X, Proset Y} {F : X -> Y} {G : Y -> 
   : Cocontinuous F | 2.
 Proof.
   move=> R J A [C U]; split=> [r | A' C'] /=; first by apply: fmap'.
-  apply/transpose/U => r; apply/transpose/C'.
+  apply/transpose/U => r; apply/(transpose (F:=F))/C'.
 Qed.
 Instance right_adjoint_continuous `{Proset X, Proset Y} {F : X -> Y} {G : Y -> X}
          `{!F ⊣ G, !Functor F, !Functor G}
   : Continuous G | 2.
 Proof.
   move=> R J A [C U]; split=> [r | A' C'] /=; first by apply: fmap'.
-  apply/transpose/U => r; apply/transpose/C'.
+  apply/(transpose (F:=F))/U => r; apply/transpose/C'.
 Qed.
 
 (* TODO Move this. *)
+(*
 Instance cone_proper `{Proset X} {R}
-  : Proper (core pro_le ==> core pro_le ==> iff) (cone (R:=R)).
+  : Proper (core pro_le ==> core pro_le ==> iff) (cone (R:=R) (X:=X)).
 Proof.
   move=> A A' E_A J J' E_J.
   rewrite /cone; split.
@@ -1071,88 +1418,88 @@ Proof.
   - setoid_rewrite E_A; by setoid_rewrite (proj2 E_J).
 Qed.
 Instance cocone_proper `{Proset X} {R}
-  : Proper (core pro_le ==> core pro_le ==> iff) (cocone (R:=R)).
+  : Proper (core pro_le ==> core pro_le ==> iff) (cocone (R:=R) (X:=X)).
 Proof.
   move=> A A' E_A J J' E_J.
   rewrite /cocone; split.
   - setoid_rewrite (proj2 E_A); by setoid_rewrite (proj1 E_J).
   - setoid_rewrite E_A; by setoid_rewrite (proj2 E_J).
 Qed.
-Lemma full_left_adjoint_lim : forall `{Adjoint Y X F G, !Functor F, !Functor G, !Full F}
-                                {R} {A} {J : R -> Y},
-    lim_cone A (F ∘ J) -> lim_cone (G A) J.
+*)
+Lemma full_left_adjoint_glb : forall `{Adjoint Y X F G, !Functor F, !Functor G, !Full F}
+                                {R} {J : R -> Y} {A},
+    glb (F ∘ J) A -> glb J (G A).
 Proof.
-  move=> Y ? X ? F G Adj ? ? ? R A J LC.
-  unfold lim_cone; setoid_replace J with (G ∘ F ∘ J).
-  - apply: distrib_lim_cone LC.
+  move=> Y ? X ? F G Adj ? ? ? R J A Glb.
+  unfold greatest; setoid_replace J with (G ∘ F ∘ J).
+  - apply: preserve_inf Glb.
   - split=> r /=; apply (pw_core full_left_adjoint (J r)).
 Qed.
-Lemma full_right_adjoint_colim : forall `{Adjoint X Y F G, !Functor F, !Functor G, !Full G}
-                                   {R} {J : R -> Y} {A},
-    colim_cocone (G ∘ J) A -> colim_cocone J (F A).
+Lemma full_right_adjoint_lub : forall `{Adjoint X Y F G, !Functor F, !Functor G, !Full G}
+                                 {R} {J : R -> Y} {A},
+    lub (G ∘ J) A -> lub J (F A).
 Proof.
-  move=> X ? Y ? F G Adj ? ? ? R J A CC.
-  unfold colim_cocone; setoid_replace J with (F ∘ G ∘ J).
-  - apply: distrib_colim_cocone CC.
+  move=> X ? Y ? F G Adj ? ? ? R J A Lub.
+  unfold least; setoid_replace J with (F ∘ G ∘ J).
+  - apply: preserve_sup Lub.
   - split=> r /=; apply (pw_core full_right_adjoint (J r)).
 Qed.
-Definition reflective_cocomplete
-           `{Adjoint X Y F G, !Functor F, !Functor G, !Full G, !Bicomplete X}
-  : Bicomplete Y
-  := cocomplete_sufficient (fun R => F ∘ colim ∘ compose G)
-                           (fun R J => full_right_adjoint_colim (is_colim (G ∘ J))).
-Definition coreflective_complete
-           `{Adjoint Y X F G, !Functor F, !Functor G, !Full F, !Bicomplete X}
-  : Bicomplete Y
-  := complete_sufficient (fun R => G ∘ lim ∘ compose F)
-                         (fun R J => full_left_adjoint_lim (is_lim (F ∘ J))).
-Definition bireflective_bicomplete
-           `{Proset X, Proset Y, !Bicomplete X} {F1 F2 : X -> Y} {G : Y -> X}
-           `{!F1 ⊣ G, !G ⊣ F2, !Functor F1, !Functor F2, !Functor G, !Full G}
-  : Bicomplete Y
-  := {| lim R := F2 ∘ lim ∘ compose G;
-        is_lim R J := full_left_adjoint_lim (is_lim (G ∘ J));
-        colim R := F1 ∘ colim ∘ compose G;
-        is_colim R J := full_right_adjoint_colim (is_colim (G ∘ J))|}.
+(* TODO be more fine-grained *)
+Definition reflective_suplattice
+           `{Adjoint X Y F G, !Functor F, !Functor G, !Full G, !SupLattice X}
+  : SupLattice Y
+  := fun R J => {| sup := F (sup (G ∘ J));
+                is_sup := full_right_adjoint_lub (is_sup (G ∘ J)) |}.
+(*
+Definition reflective_inflattice
+           `{Adjoint X Y F G, !Functor F, !Functor G, !Full G, !SupLattice X}
+  : InfLattice Y
+  := @sups_sufficient Y _ (reflective_suplattice (F:=F) (G:=G)).
+*)
+Definition coreflective_inflattice
+           `{Adjoint Y X F G, !Functor F, !Functor G, !Full F, !InfLattice X}
+  : InfLattice Y
+  := fun R J => {| inf := G (inf (F ∘ J));
+                is_inf := full_left_adjoint_glb (is_inf (F ∘ J)) |}.
 
-Definition universal_left_adjoint `{Proset X, Bicomplete Y} (G : Y -> X) (A : X) : Y
-  := lim (fun B : {B0 | A ⊢ G B0} => `B).
-Definition universal_right_adjoint `{Bicomplete X, Proset Y} (F : X -> Y) (B : Y) : X
-  := colim (fun A : {A0 | F A0 ⊢ B} => `A).
-Arguments universal_left_adjoint {_ _ _ _ _} G A /.
-Arguments universal_right_adjoint {_ _ _ _ _} F B /.
-Instance ula_functor `{Proset X, Bicomplete Y} {G : Y -> X}
+Definition universal_left_adjoint `{Proset X, Complete Y} (G : Y -> X) (A : X) : Y
+  := inf (fun B : {B0 | A ⊢ G B0} => `B).
+Definition universal_right_adjoint `{Complete X, Proset Y} (F : X -> Y) (B : Y) : X
+  := sup (fun A : {A0 | F A0 ⊢ B} => `A).
+Arguments universal_left_adjoint {_ _ _ _ _ _ _} G A /.
+Arguments universal_right_adjoint {_ _ _ _ _ _ _} F B /.
+Instance ula_functor `{Proset X, Complete Y} {G : Y -> X}
   : Functor (universal_left_adjoint G).
 Proof.
   move=> A B D /=.
-  apply/lim_right => -[B0 ?] /=; apply/(lim_left _ (B0 ↾ _)); by etransitivity.
+  apply/inf_right => -[B0 ?] /=; apply/(inf_lb (B0 ↾ _)); by etransitivity.
 Qed.
-Instance ura_functor `{Bicomplete X, Proset Y} {F : X -> Y}
+Instance ura_functor `{Complete X, Proset Y} {F : X -> Y}
   : Functor (universal_right_adjoint F).
 Proof.
   move=> A B D /=.
-  apply/colim_left => -[A0 ?] /=; apply/(colim_right _ (A0 ↾ _)); by etransitivity.
+  apply/sup_left => -[A0 ?] /=; apply/(sup_ub (A0 ↾ _)); by etransitivity.
 Qed.
 (* These are not instances because we don't want them to conflict with other ones when we
    give more useful/explicit definitions. But they should be suitable for using to make
    instances very quickly! *)
-Lemma universal_adjunction1 : forall `{Proset X, Bicomplete Y}
+Lemma universal_adjunction1 : forall `{Proset X, Complete Y}
                                 {G : Y -> X} `{!Functor G, !Continuous G},
     universal_left_adjoint G ⊣ G.
 Proof.
-  move=> X Pr_X Y Pr_Y Comp G Funct_G Cont_G; constructor=> [A | B] /=.
-  - case: (create_lim_cone (fun B : {B0 | A ⊢ G B0} => `B)) => C U.
+  move=> X ? Y ? ? ? ? G ? ?; constructor=> [A | B] /=.
+  - case: (proj1 (preserves_inf_alt1 (F:=G) (J:=fun B : {B0 | A ⊢ G B0} => `B))) => LB U.
     apply/U => -[B0 ?] //.
-    - by apply: (lim_left _ (B ↾ _)).
+  - by apply: (inf_lb (B ↾ _)).
 Qed.
-Lemma universal_adjunction2 : forall `{Bicomplete X, Proset Y}
+Lemma universal_adjunction2 : forall `{Complete X, Proset Y}
                                 {F : X -> Y} `{!Functor F, !Cocontinuous F},
     F ⊣ universal_right_adjoint F.
 Proof.
-  move=> X Pr_X Comp Y Pr_Y F Funct_F Cont_F; constructor=> [A | B] /=.
-  - by apply: (colim_right _ (A ↾ _)).
-  - case: (create_colim_cocone (fun B : {A0 | F A0 ⊢ B} => `B)) => C U.
-    apply/U => -[A0 ?] //.
+  move=> X ? ? ? ? Y ? F ? ?; constructor=> [A | B] /=.
+  - by apply: (sup_ub (A ↾ _)).
+  - case: (proj1 (preserves_sup_alt1 (F:=F) (J:=fun A : {A0 | F A0 ⊢ B} => `A))) => UB U.
+    apply/U => -[B0 ?] //.
 Qed.
 
 Instance compose_adjoint `{Proset X, Proset Y, Proset Z'}
@@ -1165,49 +1512,31 @@ Instance postcomp_adjoint `{Proset X, Proset X'} {Y}
          `{!F ⊣ G, !Functor F, !Functor G}
   : Adjoint (X:=Y -> X) (F ∘.) (G ∘.).
 Proof. firstorder. Qed.
-Instance const_lim_adjoint `{Bicomplete X} {Y} : @const X Y ⊣ lim.
+(* TODO fixme
+Instance const_inf_adjoint `{Complete X} {Y} : @const X Y ⊣ inf.
 Proof.
   constructor=> [A | P y] /=.
-  - apply: lim_right => y; by simpl.
+  - apply: inf_right => y; by simpl.
   - apply/lim_left.
 Qed.
-Instance colim_const_adjoint `{Bicomplete X} {Y} : colim ⊣ @const X Y.
+Instance colim_const_adjoint `{Complete X} {Y} : colim ⊣ @const X Y.
 Proof.
   constructor=> [P y | A] /=.
   - apply/colim_right.
   - apply: colim_left => y; by simpl.
 Qed.
-
-(* TODO Are these monoidal? Other instances? etc *)
-Definition lim' `{Bicomplete X} {Y Y'} (f : Y -> Y') (P : Y -> X) : Y' -> X :=
-  fun y' => lim (fun y : sig (fun y0 => f y0 = y') => P (`y)).
-Arguments lim' {_ _ _ _ _} f P _ /.
-Instance subst_lim'_adjoint `{Bicomplete X} {Y Y'} {f : Y -> Y'} : (.∘ f) ⊣ lim' f.
-Proof.
-  constructor=> [P y' | P y] /=.
-  - apply: lim_right => -[y0 /= <-] //.
-  - by apply: (lim_left _ (y ↾ _)).
-Qed.
-Definition colim' `{Bicomplete X} {Y Y'} (f : Y -> Y') (P : Y -> X) : Y' -> X :=
-  fun y' => colim (fun y : sig (fun y0 => f y0 = y') => P (`y)).
-Arguments colim' {_ _ _ _ _} f P _ /.
-Instance colim'_subst_adjoint `{Bicomplete X} {Y Y'} {f : Y -> Y'} : colim' f ⊣ (.∘ f).
-Proof.
-  constructor=> [P y | A y'] /=.
-  - by apply: (colim_right _ (y ↾ _)).
-  - apply: colim_left => -[y0 /= <-] //.
-Qed.
+*)
 
 Lemma oplax_adjoint_lax : forall `{MonSet X, MonSet Y} {F : X -> Y} {G : Y -> X}
                             `{!F ⊣ G, !Functor F, !Functor G},
     OplaxMon F <-> LaxMon G.
 Proof.
   move=> X Pr_X MS_X Y Pr_Y MS_Y F G Adj Funct_F Funct_G.
-  split=> [Oplax | Lax]; constructor=> [| A B]; apply/transpose.
-  - apply/pres_memp_op.
-  - setoid_rewrite pres_tens_op; apply/bimap; apply/adj_counit.
+  split=> [Oplax | Lax]; constructor=> [| A B]; apply/(transpose (Adj:=Adj)).
+  - apply: pres_memp_op.
+  - setoid_rewrite pres_tens_op; apply bimap; apply/(adj_counit (Adjoint:=Adj)).
   - apply/pres_memp.
-  - setoid_rewrite <- pres_tens; apply/bimap; apply/adj_unit.
+  - setoid_rewrite <- pres_tens; apply bimap; apply/(adj_unit (Adjoint:=Adj)).
 Qed.
 Corollary adjoint_equivalence_strong : forall `{MonSet X, MonSet Y} {F : X -> Y} {G : Y -> X}
                                          `{!F ⊣ G, !G ⊣ F, !Functor F, !Functor G},
@@ -1219,44 +1548,44 @@ Corollary triple_strong : forall `{MonSet X, MonSet Y} {F : X -> Y} {G : Y -> X}
     TCAnd (OplaxMon F) (LaxMon H) <-> StrongMon G.
 Proof. split=> [[Oplax Lax] | Strong]; split; apply/oplax_adjoint_lax. Qed.
 
-Definition r_product `{Bicomplete X} (B : X) : X -> X := fun A => A × B.
+Definition r_meet `{Proset X, !BinMeets X} (B : X) : X -> X := fun A => A ⩕ B.
 Definition r_tensor `{MonSet X} (B : X) : X -> X := fun A => A ⊗ B.
-Arguments r_product {_ _ _} _ _ /.
+Arguments r_meet {_ _ _} _ _ /.
 Arguments r_tensor {_ _ _} _ _ /.
-Instance product_functor `{Bicomplete X} : Functor (product (X:=X)).
-Proof. move=> A A' D B; by setoid_rewrite D. Qed.
-Instance product_functor' `{Bicomplete X} {A : X} : Functor (product A).
-Proof. move=> B B' D; by setoid_rewrite D. Qed.
-Instance coproduct_functor `{Bicomplete X} : Functor (coproduct (X:=X)).
-Proof. move=> A A' D B; by setoid_rewrite D. Qed.
-Instance coproduct_functor' `{Bicomplete X} {A : X} : Functor (coproduct A).
-Proof. move=> B B' D; by setoid_rewrite D. Qed.
+Instance meet_functor `{Proset X, !BinMeets X} : Functor (meet (X:=X)).
+Proof. move=> A A' D B; apply/meet_right; [apply/meet_left1/D | apply/meet_proj2]. Qed.
+Instance meet_functor' `{Proset X, !BinMeets X} {A : X} : Functor (meet A).
+Proof. move=> B B' D; apply/meet_right; [apply/meet_proj1 | apply/meet_left2/D]. Qed.
+Instance join_functor `{Proset X, !BinJoins X} : Functor (join (X:=X)).
+Proof. move=> A A' D B; apply/join_left; [apply/join_right1/D | apply/join_inj2]. Qed.
+Instance join_functor' `{Proset X, !BinJoins X} {A : X} : Functor (join A).
+Proof. move=> B B' D; apply/join_left; [apply/join_inj1 | apply/join_right2/D]. Qed.
 Instance tensor_functor `{MonSet X} : Functor (pro_tens (X:=X)).
 Proof. move=> A A' D1 B; by apply: bimap. Qed.
 Instance tensor_functor' `{MonSet X} {A : X} : Functor (pro_tens A).
 Proof. move=> B B' D /=; by apply: bimap. Qed.
-Instance r_product_functor `{Bicomplete X} {B : X} : Functor (r_product B).
-Proof. move=> A A' D /=; by setoid_rewrite D. Qed.
+Instance r_meet_functor `{Proset X, !BinMeets X} {B : X} : Functor (r_meet B).
+Proof. move=> A A' D /=; by apply: meet_functor. Qed.
 Instance r_tensor_functor `{MonSet X} {B : X} : Functor (r_tensor B).
 Proof. move=> A A' D /=; by apply: bimap. Qed.
-Instance exponential_functor `{Frame X} {A : X} : Functor (exponential A).
+Instance exponential_functor `{Exponents X} {A : X} : Functor (exponential A).
 Proof.
   move=> B B' D.
-  apply/product_exponential; setoid_rewrite <- D; by apply/product_exponential.
+  apply/meet_exponential; setoid_rewrite <- D; by apply/meet_exponential.
 Qed.
 Instance internal_hom_functor `{ClosedMonSet X} {A : X} : Functor (internal_hom A).
 Proof.
   move=> B B' D.
-  apply/tensor_hom; setoid_rewrite <- D; by apply/tensor_hom.
+  apply tensor_hom; setoid_rewrite <- D; by apply tensor_hom.
 Qed.
 Instance l_internal_hom_functor `{LClosedMonSet X} {A : X} : Functor (l_internal_hom A).
 Proof.
   move=> B B' D.
-  apply/l_tensor_hom; setoid_rewrite <- D; by apply/l_tensor_hom.
+  apply l_tensor_hom; setoid_rewrite <- D; by apply l_tensor_hom.
 Qed.
-Instance r_product_exponential_adjoint `{Frame X} {A : X}
-  : r_product A ⊣ exponential A.
-Proof. apply transpose_sufficient => * /=; apply/product_exponential. Qed.
+Instance r_meet_exponential_adjoint `{Exponents X} {A : X}
+  : r_meet A ⊣ exponential A.
+Proof. apply transpose_sufficient => * /=; apply/meet_exponential. Qed.
 Instance r_tensor_internal_hom_adjoint `{ClosedMonSet X} {A : X}
   : r_tensor A ⊣ internal_hom A.
 Proof. apply transpose_sufficient => * /=; apply/tensor_hom. Qed.
@@ -1264,11 +1593,14 @@ Instance tensor_l_internal_hom_adjoint `{LClosedMonSet X} {A : X}
   : pro_tens A ⊣ l_internal_hom A.
 Proof. apply transpose_sufficient => * /=; apply/l_tensor_hom. Qed.
 
-Definition r_product_exponential_adjoint_sufficient `{Bicomplete X}
+(* TODO Fix these *)
+(*
+Definition r_meet_exponential_adjoint_sufficient `{!BinMeets X}
            (exponential' : X -> X -> X) `{forall A, Functor (exponential' A)}
            (Adj : forall (A : X), r_product A ⊣ exponential' A) : Frame X
-  := {| exponential := exponential'; product_exponential A B C := transpose |}.
-Definition r_product_cocontinuous_sufficient `{Bicomplete X}
+  := {| exponential := exponential';
+        product_exponential A B C := transpose (Adj:=Adj B) |}.
+Definition r_product_cocontinuous_sufficient `{Complete X}
            `(Cocont : forall A, Cocontinuous (r_product A))
   : Frame X
   := {| exponential A := universal_right_adjoint (r_product A);
@@ -1277,8 +1609,8 @@ Definition r_product_cocontinuous_sufficient `{Bicomplete X}
 Definition r_tensor_internal_hom_adjoint_sufficient `{MonSet X}
            (internal_hom' : X -> X -> X) `{forall A, Functor (internal_hom' A)}
            (Adj : forall (A : X), r_tensor A ⊣ internal_hom' A) : ClosedMonSet X
-  := {| internal_hom := internal_hom'; pro_tensor_hom A B C := transpose |}.
-Definition r_tensor_cocontinuous_sufficient `{Bicomplete X, !MonSet X}
+  := {| internal_hom := internal_hom'; pro_tensor_hom A B C := transpose (Adj:=Adj B) |}.
+Definition r_tensor_cocontinuous_sufficient `{Complete X, !MonSet X}
            `(Cocont : forall A, Cocontinuous (r_tensor A))
   : ClosedMonSet X
   := {| internal_hom A := universal_right_adjoint (r_tensor A);
@@ -1288,12 +1620,13 @@ Definition tensor_l_internal_hom_adjoint_sufficient `{MonSet X}
            (l_internal_hom' : X -> X -> X) `{forall A, Functor (l_internal_hom' A)}
            (Adj : forall (A : X), pro_tens A ⊣ l_internal_hom' A) : LClosedMonSet X
   := {| l_internal_hom := l_internal_hom'; pro_l_tensor_hom A B C := transpose |}.
-Definition tensor_cocontinuous_sufficient `{Bicomplete X, !MonSet X}
+Definition tensor_cocontinuous_sufficient `{Complete X, !MonSet X}
            `(Cocont : forall A, Cocontinuous (pro_tens A))
   : LClosedMonSet X
   := {| l_internal_hom A := universal_right_adjoint (pro_tens A);
         pro_l_tensor_hom A B C :=
           transpose (Adj:=universal_adjunction2 (F:=pro_tens B)) |}.
+*)
 
 Lemma left_adjoint_unique : forall `{Proset X, Proset Y} {F F' : X -> Y} {G : Y -> X}
                               `{!F ⊣ G, !Functor F, !Functor F', !Functor G},
@@ -1380,7 +1713,7 @@ Definition Hom_compose_assoc : forall `{Proset X, Proset Y, Proset Z', Proset W}
     F ○ (G ○ H) ⟛ (F ○ G) ○ H.
 Proof. by compute. Qed.
 
-Program Instance Hom_bicomplete `{Proset X, Bicomplete Y} : Bicomplete (Hom X Y)
+Program Instance Hom_bicomplete `{Proset X, Complete Y} : Complete (Hom X Y)
   := {| lim R J := lim (ap_Hom ∘ J) ↾ _; colim R J := colim (ap_Hom ∘ J) ↾ _ |}.
 Next Obligation.
   move=> X Pr_X Y Pr_Y Comp R J A B D /=.
@@ -1400,10 +1733,10 @@ Next Obligation.
   - rewrite -/ap_Hom; by setoid_rewrite <- colim_right.
   - apply: colim_left => r; apply: Cocone.
 Qed.
-Instance ap_Hom_bicomplete_continuous `{Proset X, Bicomplete Y}
+Instance ap_Hom_bicomplete_continuous `{Proset X, Complete Y}
   : Continuous (ap_Hom (X:=X) (Y:=Y)).
 Proof. by apply/distrib_lim_sufficient. Qed.
-Instance ap_Hom_bicomplete_cocontinuous `{Proset X, Bicomplete Y}
+Instance ap_Hom_bicomplete_cocontinuous `{Proset X, Complete Y}
   : Cocontinuous (ap_Hom (X:=X) (Y:=Y)).
 Proof. by apply/distrib_colim_sufficient. Qed.
 (* Hmm. *)
@@ -1411,16 +1744,16 @@ Instance flip_functoriality {R} `{Proset Y, Proset X}
          {F : R -> Y -> X} `{!forall r, Functor (F r)}
   : Functor (flip F).
 Proof. firstorder. Qed.
-Lemma Hom_lim : forall `{Proset Y, Bicomplete X} {R} (J : R -> Hom Y X),
+Lemma Hom_lim : forall `{Proset Y, Complete X} {R} (J : R -> Hom Y X),
     lim J ⟛ in_Hom (lim ∘ flip J).
 Proof. by compute. Qed.
-Lemma Hom_colim : forall `{Proset Y, Bicomplete X} {R} (J : R -> Hom Y X),
+Lemma Hom_colim : forall `{Proset Y, Complete X} {R} (J : R -> Hom Y X),
     colim J ⟛ in_Hom (colim ∘ flip J).
 Proof. by compute. Qed.
-Instance Hom_compose_continuous `{Proset Y, Proset Y', Bicomplete X} {F : Hom Y' Y}
+Instance Hom_compose_continuous `{Proset Y, Proset Y', Complete X} {F : Hom Y' Y}
   : Continuous (X:=Hom Y X) (.○ F).
 Proof. apply/distrib_lim_sufficient; by simpl. Qed.
-Instance Hom_compose_cocontinuous `{Proset Y, Proset Y', Bicomplete X} {F : Hom Y' Y}
+Instance Hom_compose_cocontinuous `{Proset Y, Proset Y', Complete X} {F : Hom Y' Y}
   : Cocontinuous (X:=Hom Y X) (.○ F).
 Proof. apply/distrib_colim_sufficient; by simpl. Qed.
 
@@ -1429,10 +1762,10 @@ Arguments Hom_eval_at {_ _ _ _} _ _ /.
 Instance subst_functor3 `{Proset X, Proset Y} {y : Y}
   : Functor (X:=Hom Y X) (Hom_eval_at y).
 Proof. compute; firstorder. Qed.
-Instance subst_continuous3 `{Proset Y, Bicomplete X} {y : Y}
+Instance subst_continuous3 `{Proset Y, Complete X} {y : Y}
   : Continuous (X:=Hom Y X) (Hom_eval_at y).
 Proof. by apply/distrib_lim_sufficient. Qed.
-Instance subst_cocontinuous3 `{Proset Y, Bicomplete X} {y : Y}
+Instance subst_cocontinuous3 `{Proset Y, Complete X} {y : Y}
   : Cocontinuous (X:=Y -> X) (eval_at y).
 Proof. by apply/distrib_colim_sufficient. Qed.
 
@@ -1523,7 +1856,7 @@ Proof.
   - apply/adj_counit.
 Qed.
 
-Program Definition universal_lan {X} `{Proset X', Bicomplete Y}
+Program Definition universal_lan {X} `{Proset X', Complete Y}
         (p : X -> X') (F : X -> Y) : Hom X' Y
   := fun x' => colim (fun y : {y0 | p y0 ⊢ x'} => F (`y)).
 Next Obligation.
@@ -1533,7 +1866,7 @@ Next Obligation.
     by etransitivity.
 Qed.
 Arguments universal_lan {_ _ _ _ _ _} p F /.
-Program Definition universal_ran {X} `{Proset X', Bicomplete Y}
+Program Definition universal_ran {X} `{Proset X', Complete Y}
         (p : X -> X') (F : X -> Y) : Hom X' Y
   := fun x' => lim (fun y : {y0 | x' ⊢ p y0} => F (`y)).
 Next Obligation.
@@ -1543,7 +1876,7 @@ Next Obligation.
     by etransitivity.
 Qed.
 Arguments universal_ran {_ _ _ _ _ _} p F /.
-Lemma universal_lan_global_lan : forall `{Functor X X' p, Bicomplete Y},
+Lemma universal_lan_global_lan : forall `{Functor X X' p, Complete Y},
     global_lan (Y:=Y) p (universal_lan p).
 Proof.
   move=> X ? X' ? p ? Y ? ?; constructor=> f x /=.
@@ -1551,7 +1884,7 @@ Proof.
   - apply/colim_left => -[y D] /=.
       by setoid_rewrite D.
 Qed.
-Lemma universal_ran_global_ran : forall `{Functor X X' p, Bicomplete Y},
+Lemma universal_ran_global_ran : forall `{Functor X X' p, Complete Y},
     global_ran (Y:=Y) p (universal_ran p).
 Proof.
   move=> X ? X' ? p ? Y ? ?; constructor=> f x /=.
@@ -1562,13 +1895,13 @@ Qed.
 
 
 Class Quantale (X : Type)
-      `{!Proset X, !Bicomplete X, !MonSet X, !ClosedMonSet X, !LClosedMonSet X}.
+      `{!Proset X, !Complete X, !MonSet X, !ClosedMonSet X, !LClosedMonSet X}.
 Hint Mode Quantale ! - - - - - : typeclass_instances.
 Instance quantale_def
-         `{Proset X, !Bicomplete X, !MonSet X, !ClosedMonSet X, !LClosedMonSet X}
-  : Quantale X.
+         `{Proset X, !Complete X, !MonSet X, !ClosedMonSet X, !LClosedMonSet X}
+  : Quantale X := {}.
 
-Instance prop_quantale : Quantale Prop.
+Instance prop_quantale : Quantale Prop := {}.
 
 Definition Endo (X : Type) `{Proset X} := Hom X X.
 Identity Coercion endo_to_hom : Endo >-> Hom.
@@ -1584,9 +1917,9 @@ Proof.
 Qed.
 Instance endo_mset `{Proset X} : MonSet (Endo X)
   := {| pro_tens := Hom_compose |}.
-Instance endo_cmset `{Bicomplete X} : ClosedMonSet (Endo X)
-  := r_tensor_internal_hom_adjoint_sufficient (fun (p F : Endo X) => universal_ran p F)
-                                              (fun p => universal_ran_global_ran (p:=p)).
+Program Instance endo_cmset `{Complete X} : ClosedMonSet (Endo X)
+  := r_tensor_internal_hom_adjoint_sufficient (fun (p F : Endo X) => universal_ran p F) _.
+Next Obligation. move=> *; apply: universal_ran_global_ran. Qed.
 
 (* TODO Put this in the right place. *)
 Program Instance pw_frame {Y} `{Frame X} : Frame (Y -> X)
@@ -1626,7 +1959,7 @@ Instance pw_cmset {Y} `{ClosedMonSet X} : ClosedMonSet (Y -> X) :=
   {| internal_hom := fun f g y => internal_hom (f y) (g y) |}.
 Instance pw_lcmset {Y} `{LClosedMonSet X} : LClosedMonSet (Y -> X) :=
   {| l_internal_hom := fun f g y => l_internal_hom (f y) (g y) |}.
-Instance pw_quantale `{Quantale X} {Y} : Quantale (Y -> X).
+Instance pw_quantale `{Quantale X} {Y} : Quantale (Y -> X) := {}.
 
 Lemma quantale_tensor_prop :
   forall `{Quantale X} {P Q}, embed_prop (X:=X) P ⊗ embed_prop Q ⟛ embed_prop (P ∧ Q).
@@ -1650,7 +1983,7 @@ Proof.
   move=> X ? ? ? A B.
   setoid_rewrite (cartesian_sym A); rewrite product_exponential //.
 Qed.
-Instance embed_prop_functor `{Bicomplete X} : Functor (embed_prop (X:=X)).
+Instance embed_prop_functor `{Complete X} : Functor (embed_prop (X:=X)).
 Proof. move=> P Q D; apply: embed_prop_left => ?; by apply/embed_prop_right/D. Qed.
 Lemma mon_modus_ponens : forall `{ClosedMonSet X} {A B : X},
     (A ⊸ B) ⊗ A ⊢ B.
@@ -1668,16 +2001,16 @@ Proof.
   apply/product_exponential; setoid_rewrite product_left2; by apply: D2.
 Qed.
 
-Definition mon_embed_prop `{MonSet X, !Bicomplete X} (P : Prop) : X :=
+Definition mon_embed_prop `{MonSet X, !Complete X} (P : Prop) : X :=
   colim (fun H : P => memp).
 Arguments mon_embed_prop : simpl never.
-Lemma mon_embed_prop_left : forall `{MonSet X, !Bicomplete X} {P : Prop} {Q : X},
+Lemma mon_embed_prop_left : forall `{MonSet X, !Complete X} {P : Prop} {Q : X},
     (P -> memp ⊢ Q) -> mon_embed_prop P ⊢ Q.
 Proof. move=> X Pr Comp P Q D; by apply: colim_left. Qed.
-Lemma mon_embed_prop_right : forall `{MonSet X, !Bicomplete X} {P : X} {Q : Prop},
+Lemma mon_embed_prop_right : forall `{MonSet X, !Complete X} {P : X} {Q : Prop},
     Q -> P ⊢ memp -> P ⊢ mon_embed_prop Q.
 Proof. move=> X Pr MS Comp P Q H D; by setoid_rewrite <- colim_right. Qed.
-Instance mon_embed_prop_functor `{MonSet X, !Bicomplete X}
+Instance mon_embed_prop_functor `{MonSet X, !Complete X}
   : Functor (mon_embed_prop (X:=X)).
 Proof.
   move=> P Q D.
@@ -1687,7 +2020,7 @@ Proof.
 Qed.
 
 Lemma mon_tensor_prop :
-  forall `{ClosedMonSet X, !Bicomplete X} {P Q},
+  forall `{ClosedMonSet X, !Complete X} {P Q},
     mon_embed_prop (X:=X) P ⊗ mon_embed_prop Q ⟛ mon_embed_prop (P ∧ Q).
 Proof.
   move=> X Pr MS CMS Comp P Q; split.
@@ -1698,7 +2031,7 @@ Proof.
 Qed.
 
 Lemma mon_prop_loop :
-  forall `{ClosedMonSet X, !Bicomplete X} {P Q R : X} {S : Prop},
+  forall `{ClosedMonSet X, !Complete X} {P Q R : X} {S : Prop},
     (P ⊢ mon_embed_prop S) -> (S -> Q ⊢ R) -> P ⊗ Q ⊢ R.
 Proof.
   move=> X Pr MS CM Comp P Q R S D1 D2.
@@ -1706,7 +2039,7 @@ Proof.
   apply/tensor_hom; rewrite pro_lunit; by apply: D2.
 Qed.
 Lemma l_mon_prop_loop :
-  forall `{LClosedMonSet X, !Bicomplete X} {P Q R : X} {S : Prop},
+  forall `{LClosedMonSet X, !Complete X} {P Q R : X} {S : Prop},
     (Q ⊢ mon_embed_prop S) -> (S -> P ⊢ R) -> P ⊗ Q ⊢ R.
 Proof.
   move=> X Pr MS CM Comp P Q R S D1 D2.
@@ -1730,14 +2063,14 @@ Instance lax_pres_monoid `{LaxMon X Y F, !Functor F} {M : X} `{!Monoid M}
   : Monoid (F M) | 2.
 Proof.
   constructor.
-  - setoid_rewrite pres_memp; apply/fmap'/eta.
+  - setoid_rewrite (pres_memp (F:=F)); apply/fmap'/eta.
   - setoid_rewrite pres_tens; apply/fmap'/mu.
 Qed.
 Instance oplax_pres_comonoid `{OplaxMon X Y F, !Functor F} {W : X} `{!Comonoid W}
   : Comonoid (F W) | 2.
 Proof.
   constructor.
-  - setoid_rewrite <- pres_memp_op; apply/fmap'/epsilon.
+  - setoid_rewrite <- (pres_memp_op (F:=F)); apply/fmap'/epsilon.
   - setoid_rewrite <- pres_tens_op; apply/fmap'/delta.
 Qed.
 
@@ -1881,8 +2214,8 @@ Class Coalg `{Proset X} (F : X -> X) (A : X) : Prop :=
   coalg : A ⊢ F A.
 Hint Mode Alg ! - ! ! : typeclass_instances.
 Hint Mode Coalg ! - ! ! : typeclass_instances.
-Arguments alg {_ _ _} _ {_}.
-Arguments coalg {_ _ _} _ {_}.
+Arguments alg {_ _ } _ _ {_}.
+Arguments coalg {_ _} _ _ {_}.
 Lemma alg_fixed_point : forall `{Monad X M} {A : X}, Alg M A <-> A ⟛ M A.
 Proof. firstorder. Qed.
 Lemma coalg_fixed_point : forall `{Comonad X W} {A : X}, Coalg W A <-> A ⟛ W A.
@@ -1898,20 +2231,20 @@ Proof. by apply transpose. Qed.
 Instance free_alg `{Monad X M} {A} : Alg M (M A) := join.
 Instance cofree_coalg `{Comonad X W} {A} : Coalg W (W A) := duplicate.
 Instance adj_img_alg `{Adjoint X Y F G, !Functor G} {A} : Alg (G ∘ F) (G A)
-  := fmap' (adj_counit _).
+  := fmap' (adj_counit (F:=F) (G:=G) _).
 Instance adj_img_coalg `{Adjoint X Y F G, !Functor F} {A} : Coalg (F ∘ G) (F A)
-  := fmap' (adj_unit _).
+  := fmap' (adj_unit (F:=F) (G:=G) _).
 Lemma conecessitation : forall `{Alg X F Q, !Functor F} {P},
     P ⊢ Q -> F P ⊢ Q.
 Proof.
   move=> X X_Pr F Q Alg_Q Funct_F P.
-  setoid_rewrite <- (alg Q) at 2; apply fmap'.
+  setoid_rewrite <- (alg F Q) at 2; apply fmap'.
 Qed.
 Lemma necessitation : forall `{Coalg X F P, !Functor F} {Q},
     P ⊢ Q -> P ⊢ F Q.
 Proof.
   move=> X X_Pr F P Coalg_P Funct_F Q.
-  setoid_rewrite (coalg P) at 2; apply fmap'.
+  setoid_rewrite (coalg F P) at 2; apply fmap'.
 Qed.
 Lemma monad_free : forall `{Monad X M} {A B : X} `{!Alg M B},
     A ⊢ B <-> M A ⊢ B.
@@ -1965,9 +2298,9 @@ Proof.
     setoid_rewrite <- IH; apply: delta.
 Qed.
 
-Definition free_monoid `{MonSet X, !Bicomplete X} (A : X) : X
+Definition free_monoid `{MonSet X, !Complete X} (A : X) : X
   := colim (fun n => pow n A).
-Instance free_monoid_functor `{MonSet X, !Bicomplete X} : Functor (free_monoid (X:=X)).
+Instance free_monoid_functor `{MonSet X, !Complete X} : Functor (free_monoid (X:=X)).
 Proof. move=> A B D; unfold free_monoid; apply/fmap'; by setoid_rewrite D. Qed.
 Instance free_monoid_monoid `{Quantale X} {A : X} : Monoid (free_monoid A).
 Proof.
@@ -1977,10 +2310,10 @@ Proof.
     rewrite l_tensor_hom; apply/colim_left => m; rewrite -l_tensor_hom.
     rewrite -pow_assoc; apply (colim_right _ (n + m)%nat).
 Qed.
-Lemma free_monoid_reflector : forall `{MonSet X, !Bicomplete X} {A : X},
+Lemma free_monoid_reflector : forall `{MonSet X, !Complete X} {A : X},
     A ⊢ free_monoid A.
 Proof. move=> *; setoid_rewrite <- (colim_right _ 1); apply pro_runit. Qed.
-Lemma free_monoid_free_monoid : forall `{MonSet X, !Bicomplete X} {A : X} {M : X} `{!Monoid M},
+Lemma free_monoid_free_monoid : forall `{MonSet X, !Complete X} {A : X} {M : X} `{!Monoid M},
     A ⊢ M <-> free_monoid A ⊢ M.
 Proof.
   move=> X ? ? ? A M ?; split=> D.
@@ -2002,12 +2335,12 @@ Definition free_EM `{Monad X M} : X -> EM M := M ↑.
 Arguments free_EM {_ _} M {_ _} _ /.
 Instance EM_reflection `{Monad X M} : free_EM M ⊣ sval.
 Proof. constructor=> [A | [A Alg_A]] /=; [apply: ret | apply: alg]. Qed.
-Instance EM_bicomplete `{Monad X M, !Bicomplete X} : Bicomplete (EM M) | 0
+Instance EM_bicomplete `{Monad X M, !Complete X} : Complete (EM M) | 0
   := reflective_cocomplete (F:=free_EM M) (G:=sval).
 
-Definition free_monad `{Bicomplete X} (F : X -> X) : Endo X
+Definition free_monad `{Complete X} (F : X -> X) : Endo X
   := universal_ran (X:=EM F) sval sval.
-Instance free_monad_monad `{Bicomplete X} {F : X -> X} : Monad (free_monad F).
+Instance free_monad_monad `{Complete X} {F : X -> X} : Monad (free_monad F).
 Proof.
   constructor.
   - move=> A; apply: (adj_unit (Adjoint:=universal_ran_global_ran (p:=sval)) Hom_id A).
@@ -2015,20 +2348,20 @@ Proof.
     apply/(transpose (B:=in_Hom sval) (Adj:=universal_ran_global_ran)) => -[A ?] /=.
       by do 2 apply/(lim_left _ ((_ ↾ _) ↾ _)).
 Qed.
-Instance free_monad_functor' `{Bicomplete X} : Functor (free_monad (X:=X)).
+Instance free_monad_functor' `{Complete X} : Functor (free_monad (X:=X)).
 Proof.
   move=> F F' D A /=.
   apply/lim_right => -[[B Al] /= D'].
   unfold Alg in Al; setoid_rewrite <- (D _) in Al; change (Alg F B) in Al.
   apply/(lim_left _ ((B ↾ _) ↾ D')).
 Qed.
-Lemma free_monad_reflector : forall `{Bicomplete X} {F : X -> X} `{!Functor F},
+Lemma free_monad_reflector : forall `{Complete X} {F : X -> X} `{!Functor F},
     in_Hom F ⊢ free_monad F.
 Proof.
   move=> X ? ? F ?; change (in_Hom F ⊢ universal_ran (X:=EM F) sval (in_Hom sval)).
   apply/(transpose (Adj:=universal_ran_global_ran)) => -[A ?] //=.
 Qed.
-Lemma free_monad_free_monad : forall `{Bicomplete X} {F M : X -> X}
+Lemma free_monad_free_monad : forall `{Complete X} {F M : X -> X}
                                 `{!Functor F, !Functor M, !Monad M},
     F ⊢ M <-> free_monad F ⊢ in_Hom M.
 Proof.
@@ -2037,33 +2370,36 @@ Proof.
     apply/(lim_left _ ((_ ↾ _) ↾ _))/ret.
   - by etransitivity; first apply: free_monad_reflector.
 Qed.
-Instance free_monad_monad' `{Bicomplete X} : Monad (X:=Endo X) (free_monad (X:=X)).
+Instance free_monad_monad' `{Complete X} : Monad (X:=Endo X) (free_monad (X:=X)).
 Proof.
   constructor.
   - move=> F; apply/free_monad_reflector.
   - move=> F; rewrite -free_monad_free_monad //.
 Qed.
-Instance free_monad_alg `{Bicomplete X} {F : X -> X} {A} `{!Alg F A}
+Instance free_monad_alg `{Complete X} {F : X -> X} {A} `{!Alg F A}
   : Alg (free_monad F) A.
 Proof. rewrite /Alg /=; by apply/(lim_left _ ((_ ↾ _) ↾ _)). Qed.
-Lemma un_free_monad_alg `{Bicomplete X} {F : X -> X} `{!Functor F} {A}
+Lemma un_free_monad_alg `{Complete X} {F : X -> X} `{!Functor F} {A}
          `{!Alg (free_monad F) A}
   : Alg F A.
-Proof. unfold Alg; setoid_rewrite <- (alg A) at 2; apply: free_monad_reflector. Qed.
-Definition fm_EM `{Bicomplete X} {F : X -> X} : EM F -> EM (free_monad F)
+Proof.
+  unfold Alg; setoid_rewrite <- (alg (free_monad F) A) at 2.
+  apply: free_monad_reflector.
+Qed.
+Definition fm_EM `{Complete X} {F : X -> X} : EM F -> EM (free_monad F)
   := sval ↑.
 Arguments fm_EM {_ _ _} {F} _ /.
-Definition un_fm_EM `{Bicomplete X} {F : X -> X} `{!Functor F} : EM (free_monad F) -> EM F.
+Definition un_fm_EM `{Complete X} {F : X -> X} `{!Functor F} : EM (free_monad F) -> EM F.
   refine (sval ↑) => -[? ?] /=; apply: un_free_monad_alg.
 Defined.
 Arguments un_fm_EM {_ _ _} {F _} _ /.
-Instance fm_adj1 `{Bicomplete X} {F : X -> X} `{!Functor F}
+Instance fm_adj1 `{Complete X} {F : X -> X} `{!Functor F}
   : fm_EM (F:=F) ⊣ un_fm_EM.
 Proof. constructor=> -[] //=. Qed.
-Instance fm_adj2 `{Bicomplete X} {F : X -> X} `{!Functor F}
+Instance fm_adj2 `{Complete X} {F : X -> X} `{!Functor F}
   : un_fm_EM (F:=F) ⊣ fm_EM.
 Proof. constructor=> -[] //=. Qed.
-Instance EM_bicomplete' `{Bicomplete X} {F : X -> X} `{!Functor F} : Bicomplete (EM F) | 3
+Instance EM_bicomplete' `{Complete X} {F : X -> X} `{!Functor F} : Complete (EM F) | 3
   := bireflective_bicomplete (G:=fm_EM).
 
 Definition coEM `{Proset X} (W : X -> X) : Type :=
@@ -2073,9 +2409,9 @@ Definition cofree_coEM `{Comonad X W} : X -> coEM W := W ↑.
 Arguments cofree_coEM {_ _} W {_ _} /.
 Instance coEM_coreflection `{Comonad X W} : sval ⊣ cofree_coEM W.
 Proof. constructor=> [[A Coalg_A] | A] /=; [apply: coalg | apply: extract]. Qed.
-Instance coEM_bicomplete `{Comonad X W, !Bicomplete X} : Bicomplete (coEM W)
+Instance coEM_bicomplete `{Comonad X W, !Complete X} : Complete (coEM W)
   := coreflective_complete (F:=sval) (G:=cofree_coEM W).
-Program Definition cofree_coEM' `{Bicomplete X} (F : X -> X) `{!Functor F} : X -> coEM F
+Program Definition cofree_coEM' `{Complete X} (F : X -> X) `{!Functor F} : X -> coEM F
   := fun A => colim (fun A : {A0 : coEM F | `A0 ⊢ A}  => ``A).
 Next Obligation.
   move=> X ? ? F ? A.
@@ -2083,9 +2419,9 @@ Next Obligation.
   apply: coalg.
 Qed.
 
-Definition cofree_comonad `{Bicomplete X} (F : X -> X) : Endo X
+Definition cofree_comonad `{Complete X} (F : X -> X) : Endo X
   := universal_lan (X:=coEM F) sval sval.
-Instance cofree_comonad_comonad `{Bicomplete X} {F : X -> X} : Comonad (cofree_comonad F).
+Instance cofree_comonad_comonad `{Complete X} {F : X -> X} : Comonad (cofree_comonad F).
 Proof.
   constructor.
   - move=> A; apply: (adj_counit (Adjoint:=universal_lan_global_lan (p:=sval)) Hom_id A).
@@ -2093,20 +2429,20 @@ Proof.
     apply/(transpose (A:=in_Hom sval) (Adj:=universal_lan_global_lan)) => -[A ?] /=.
       by do 2 apply/(colim_right _ ((_ ↾ _) ↾ _)).
 Qed.
-Instance cofree_comonad_functor' `{Bicomplete X} : Functor (cofree_comonad (X:=X)).
+Instance cofree_comonad_functor' `{Complete X} : Functor (cofree_comonad (X:=X)).
 Proof.
   move=> F F' D A /=.
   apply/colim_left => -[[B Coal] /= D'].
   unfold Coalg in Coal; setoid_rewrite (D _) in Coal; change (Coalg F' B) in Coal.
   apply/(colim_right _ ((B ↾ _) ↾ D')).
 Qed.
-Lemma cofree_comonad_coreflector : forall `{Bicomplete X} {F : X -> X} `{!Functor F},
+Lemma cofree_comonad_coreflector : forall `{Complete X} {F : X -> X} `{!Functor F},
     cofree_comonad F ⊢ in_Hom F.
 Proof.
   move=> X ? ? F ?; change (universal_lan (X:=coEM F) sval (in_Hom sval) ⊢ in_Hom F).
   apply/(transpose (Adj:=universal_lan_global_lan)) => -[A ?] //=.
 Qed.
-Lemma cofree_comonad_cofree_comonad : forall `{Bicomplete X} {F W : X -> X}
+Lemma cofree_comonad_cofree_comonad : forall `{Complete X} {F W : X -> X}
                                         `{!Functor F, !Functor W, !Comonad W},
     W ⊢ F <-> in_Hom W ⊢ cofree_comonad F.
 Proof.
@@ -2115,37 +2451,40 @@ Proof.
     apply/(colim_right _ ((_ ↾ _) ↾ _))/extract.
   - by etransitivity; last apply: cofree_comonad_coreflector.
 Qed.
-Instance cofree_comonad_comonad' `{Bicomplete X}
+Instance cofree_comonad_comonad' `{Complete X}
   : Comonad (X:=Endo X) (cofree_comonad (X:=X)).
 Proof.
   constructor.
   - move=> F; apply/cofree_comonad_coreflector.
   - move=> F; rewrite -cofree_comonad_cofree_comonad //.
 Qed.
-Instance cofree_comonad_coalg `{Bicomplete X} {F : X -> X} {A} `{!Coalg F A}
+Instance cofree_comonad_coalg `{Complete X} {F : X -> X} {A} `{!Coalg F A}
   : Coalg (cofree_comonad F) A.
 Proof. rewrite /Coalg /=; by apply/(colim_right _ ((_ ↾ _) ↾ _)). Qed.
-Lemma un_cofree_comonad_coalg `{Bicomplete X} {F : X -> X} `{!Functor F} {A}
+Lemma un_cofree_comonad_coalg `{Complete X} {F : X -> X} `{!Functor F} {A}
          `{!Coalg (cofree_comonad F) A}
   : Coalg F A.
-Proof. unfold Coalg; setoid_rewrite (coalg A) at 1; apply: cofree_comonad_coreflector. Qed.
-Definition cofm_coEM `{Bicomplete X} {F : X -> X}
+Proof.
+  unfold Coalg; setoid_rewrite (coalg (cofree_comonad F) A) at 1.
+  apply: cofree_comonad_coreflector.
+Qed.
+Definition cofm_coEM `{Complete X} {F : X -> X}
   : coEM F -> coEM (cofree_comonad F)
   := sval ↑.
 Arguments cofm_coEM {_ _ _} {F} _ /.
-Definition un_cofm_coEM `{Bicomplete X} {F : X -> X} `{!Functor F}
+Definition un_cofm_coEM `{Complete X} {F : X -> X} `{!Functor F}
   : coEM (cofree_comonad F) -> coEM F.
   refine (sval ↑) => -[? ?] /=; apply: un_cofree_comonad_coalg.
 Defined.
 Arguments un_cofm_coEM {_ _ _} {F _} _ /.
-Instance cofm_adj1 `{Bicomplete X} {F : X -> X} `{!Functor F}
+Instance cofm_adj1 `{Complete X} {F : X -> X} `{!Functor F}
   : cofm_coEM (F:=F) ⊣ un_cofm_coEM.
 Proof. constructor=> -[] //=. Qed.
-Instance cofm_adj2 `{Bicomplete X} {F : X -> X} `{!Functor F}
+Instance cofm_adj2 `{Complete X} {F : X -> X} `{!Functor F}
   : un_cofm_coEM (F:=F) ⊣ cofm_coEM.
 Proof. constructor=> -[] //=. Qed.
-Instance coEM_bicomplete' `{Bicomplete X} {F : X -> X} `{!Functor F}
-  : Bicomplete (coEM F) | 3
+Instance coEM_bicomplete' `{Complete X} {F : X -> X} `{!Functor F}
+  : Complete (coEM F) | 3
   := bireflective_bicomplete (G:=cofm_coEM).
 
 Lemma lambek : forall `{Proset X} {F : X -> X} `{!Functor F} {I : EM F},
@@ -2165,16 +2504,16 @@ Proof.
   apply: (U (F (`I) ↾ _)) => -[].
 Qed.
 
-Definition least_fixed_point `{Bicomplete X} (F : X -> X) : X
+Definition least_fixed_point `{Complete X} (F : X -> X) : X
   := ` (initial (EM (free_monad F))).
-Definition greatest_fixed_point `{Bicomplete X} (F : X -> X) : X
+Definition greatest_fixed_point `{Complete X} (F : X -> X) : X
   := ` (terminal (coEM (cofree_comonad F))).
-Lemma lfp_alt : forall `{Bicomplete X} {F : X -> X} `{!Functor F},
+Lemma lfp_alt : forall `{Complete X} {F : X -> X} `{!Functor F},
     least_fixed_point F ⟛ ` (initial (EM F)).
-Proof. move=> *; apply: (fmap_core (F:=sval) (distrib_initial (F:=un_fm_EM))). Qed.
-Lemma gfp_alt : forall `{Bicomplete X} {F : X -> X} `{!Functor F},
+Proof. move=> *; apply (fmap_core (F:=sval) (distrib_initial (F:=un_fm_EM))). Qed.
+Lemma gfp_alt : forall `{Complete X} {F : X -> X} `{!Functor F},
     greatest_fixed_point F ⟛ ` (terminal (coEM F)).
-Proof. move=> *; apply: (fmap_core (F:=sval) (distrib_terminal (F:=un_cofm_coEM))). Qed.
+Proof. move=> *; apply (fmap_core (F:=sval) (distrib_terminal (F:=un_cofm_coEM))). Qed.
 
 (* TODO Do this right (and move it). *)
 Instance Alg_proper `{Proset X} {F : X -> X} `{!Functor F}
@@ -2191,48 +2530,48 @@ Proof.
   - rewrite {2}E; by setoid_rewrite <- (proj2 E).
   - rewrite {1}E; by setoid_rewrite <- (proj2 E).
 Qed.
-Instance lfp_alg `{Bicomplete X} {F : X -> X} `{!Functor F}
+Instance lfp_alg `{Complete X} {F : X -> X} `{!Functor F}
   : Alg F (least_fixed_point F).
 Proof. apply/(Alg_proper _ _ lfp_alt). Qed.
-Instance lfp_coalg `{Bicomplete X} {F : X -> X} `{!Functor F}
+Instance lfp_coalg `{Complete X} {F : X -> X} `{!Functor F}
   : Coalg F (least_fixed_point F).
 Proof. apply (Coalg_proper _ _ lfp_alt), lambek, is_colim. Qed.
-Instance gfp_alg `{Bicomplete X} {F : X -> X} `{!Functor F}
+Instance gfp_alg `{Complete X} {F : X -> X} `{!Functor F}
   : Alg F (greatest_fixed_point F).
 Proof. apply (Alg_proper _ _ gfp_alt), colambek, is_lim. Qed.
-Instance gfp_coalg `{Bicomplete X} {F : X -> X} `{!Functor F}
+Instance gfp_coalg `{Complete X} {F : X -> X} `{!Functor F}
   : Coalg F (greatest_fixed_point F).
 Proof. apply/(Coalg_proper _ _ gfp_alt). Qed.
-Lemma lfp_unfold_ : forall `{Bicomplete X} {F : X -> X} `{!Functor F} A,
+Lemma lfp_unfold_ : forall `{Complete X} {F : X -> X} `{!Functor F} A,
     A = least_fixed_point F -> A ⟛ F A.
 Proof. split; subst; [apply: coalg | apply: alg]. Qed.
 Notation lfp_unfold A := (lfp_unfold_ A erefl).
-Lemma gfp_unfold_ : forall `{Bicomplete X} {F : X -> X} `{!Functor F} A,
+Lemma gfp_unfold_ : forall `{Complete X} {F : X -> X} `{!Functor F} A,
     A = greatest_fixed_point F -> A ⟛ F A.
 Proof. split; subst; [apply: coalg | apply: alg]. Qed.
 Notation gfp_unfold A := (gfp_unfold_ A erefl).
-Lemma lfp_ind : forall `{Bicomplete X} {F : X -> X} `{!Functor F} {A : X},
+Lemma lfp_ind : forall `{Complete X} {F : X -> X} `{!Functor F} {A : X},
     Alg F A -> least_fixed_point F ⊢ A.
 Proof.
   move=> X ? ? F ? A Alg_A; rewrite lfp_alt; change (⊥ ⊢ A ↾ Alg_A); apply/initial_left.
 Qed.
-Lemma gfp_coind : forall `{Bicomplete X} {F : X -> X} `{!Functor F} {A : X},
+Lemma gfp_coind : forall `{Complete X} {F : X -> X} `{!Functor F} {A : X},
     Coalg F A -> A ⊢ greatest_fixed_point F.
 Proof.
   move=> X ? ? F ? A Coalg_A.
   setoid_rewrite <- (proj2 gfp_alt); change (A ↾ Coalg_A ⊢ ⊤).
   apply/terminal_right.
 Qed.
-Definition lfp_ind' : forall `{Bicomplete X} {F : X -> X} `{!Functor F} {A : X},
+Definition lfp_ind' : forall `{Complete X} {F : X -> X} `{!Functor F} {A : X},
     F A ⊢ A -> least_fixed_point F ⊢ A
   := @lfp_ind.
-Definition gfp_coind' : forall `{Bicomplete X} {F : X -> X} `{!Functor F} {A : X},
+Definition gfp_coind' : forall `{Complete X} {F : X -> X} `{!Functor F} {A : X},
     A ⊢ F A -> A ⊢ greatest_fixed_point F
   := @gfp_coind.
-Instance least_fixed_point_functor `{Bicomplete X}
+Instance least_fixed_point_functor `{Complete X}
   : Functor (X:=Hom X X) (least_fixed_point (X:=X)).
 Proof. move=> F G D; apply lfp_ind; unfold Alg; setoid_rewrite D; apply: alg. Qed.
-Instance greatest_fixed_point_functor `{Bicomplete X}
+Instance greatest_fixed_point_functor `{Complete X}
   : Functor (X:=Hom X X) (greatest_fixed_point (X:=X)).
 Proof. move=> F G D; apply gfp_coind; unfold Coalg; setoid_rewrite <- D; apply: coalg. Qed.
 
@@ -2394,21 +2733,21 @@ Proof.
 Qed.
 Lemma fp_zipwith_assoc1 : forall `{FinPow T} {X Y Z W U} {G : Y -> Z -> W} {F : X -> W -> U}
                             {As Bs Cs},
-    fp_zipwith F As (fp_zipwith G Bs Cs) =
+    fp_zipwith (T:=T) F As (fp_zipwith G Bs Cs) =
     fp_zipwith apply (fp_zipwith (fun A B C => F A (G B C)) As Bs) Cs.
 Proof.
   move=> *; rewrite /fp_zipwith /=; apply: tabulate_proper => i /=; rewrite !cancel //.
 Qed.
 Lemma fp_zipwith_assoc2 : forall `{FinPow T} {X Y Z W U} {G : X -> Y -> Z} {F : Z -> W -> U}
                            {As Bs Cs},
-    fp_zipwith F (fp_zipwith G As Bs) Cs =
+    fp_zipwith (T:=T) F (fp_zipwith G As Bs) Cs =
     fp_zipwith eval_at As (fp_zipwith (fun B C A => F (G A B) C) Bs Cs).
 Proof.
   move=> *; rewrite /fp_zipwith /=; apply: tabulate_proper => i /=.
   rewrite !cancel //.
 Qed.
 Lemma fp_map_zipwith : forall `{FinPow T} {X Y Z Z'} {F : Z -> Z'} {G : X -> Y -> Z} {As Bs},
-    fp_map F (fp_zipwith G As Bs) = fp_zipwith (fun A B => F (G A B)) As Bs.
+    fp_map (T:=T) F (fp_zipwith G As Bs) = fp_zipwith (fun A B => F (G A B)) As Bs.
 Proof. move=> *; rewrite /fp_map /fp_zipwith /=; rewrite cancel //. Qed.
 (*
 Class TensIx (J : Type) :=
@@ -2473,16 +2812,16 @@ Qed.
 Definition square (X : Type) : Type := X * X.
 (* Instance finpow2 : FinPow square. typeclasses eauto. := finpow_plus. *)
 
-Definition convolve `{FinPow T, MonSet X, MonSet Y, !Bicomplete Y}
+Definition convolve `{FinPow T, MonSet X, MonSet Y, !Complete Y}
   : Hom (T X) Y -> Hom X Y
   := universal_lan multiply.
-Definition convolve' `{FinPow T, MonSet X, MonSet Y, !Bicomplete Y}
+Definition convolve' `{FinPow T, MonSet X, MonSet Y, !Complete Y}
   : (T X -> Y) -> Hom X Y
   := universal_lan multiply.
-Instance convolve_global_lan `{FinPow T, MonSet X, MonSet Y, !Bicomplete Y}
+Instance convolve_global_lan `{FinPow T, MonSet X, MonSet Y, !Complete Y}
   : convolve (T:=T) (X:=X) (Y:=Y) ⊣ (.○ in_Hom multiply) := universal_lan_global_lan.
 (* hmm. *)
-Instance convolve'_global_lan_ish `{FinPow T, MonSet X, MonSet Y, !Bicomplete Y}
+Instance convolve'_global_lan_ish `{FinPow T, MonSet X, MonSet Y, !Complete Y}
   : convolve' (T:=T) (X:=X) (Y:=Y) ⊣ (.∘ multiply).
 Proof.
   constructor=> F A /=.
@@ -2496,45 +2835,45 @@ Program Definition ext_tens `{Proset X, MonSet Y, FinPow T}
 Definition ext_tens' `{Proset X, MonSet Y, FinPow T}
            (Fs : T (X -> Y)) : T X -> Y
   := multiply ∘ fp_zipwith apply Fs.
-Definition gday `{FinPow T, MonSet X, MonSet Y, !Bicomplete Y} : T (Hom X Y) -> Hom X Y
+Definition gday `{FinPow T, MonSet X, MonSet Y, !Complete Y} : T (Hom X Y) -> Hom X Y
   := convolve ∘ ext_tens.
-Lemma gday_left : forall `{FinPow T, MonSet X, MonSet Y, !Bicomplete Y} {Fs : T (Hom X Y)} {G},
+Lemma gday_left : forall `{FinPow T, MonSet X, MonSet Y, !Complete Y} {Fs : T (Hom X Y)} {G},
     gday Fs ⊢ G <-> ext_tens Fs ⊢ G ○ in_Hom multiply.
 Proof. move=> *; rewrite /gday /= transpose //. Qed.
-Lemma gday_right : forall `{FinPow T, MonSet X, MonSet Y, !Bicomplete Y} {F} {Gs : T (Hom X Y)},
+Lemma gday_right : forall `{FinPow T, MonSet X, MonSet Y, !Complete Y} {F} {Gs : T (Hom X Y)},
     F ⊢ gday Gs <->
     forall A : X, F A ⊢ colim (fun As : {As0 : T X | multiply As0 ⊢ A} => ext_tens Gs (`As)).
 Proof. done. Qed.
-Definition gday2 `{MonSet X, MonSet Y, !Bicomplete Y} : Hom X Y -> Hom X Y -> Hom X Y
+Definition gday2 `{MonSet X, MonSet Y, !Complete Y} : Hom X Y -> Hom X Y -> Hom X Y
   := uncurry (gday (T:=square)).
-Lemma gday2_left : forall `{FinPow T, MonSet X, MonSet Y, !Bicomplete Y} {F1 F2 : Hom X Y} {G},
+Lemma gday2_left : forall `{MonSet X, MonSet Y, !Complete Y} {F1 F2 : Hom X Y} {G},
     gday2 F1 F2 ⊢ G <-> forall x1 x2, F1 x1 ⊗ F2 x2 ⊢ G (x1 ⊗ x2).
 Proof.
   move=> *; rewrite gday_left /= /compose /=; split.
   - move=> D x1 x2; apply: (D (x1, x2)).
   - firstorder.
 Qed.
-Lemma gday2_right : forall `{FinPow T, MonSet X, MonSet Y, !Bicomplete Y} {F} {G1 G2 : Hom X Y},
+Lemma gday2_right : forall `{FinPow T, MonSet X, MonSet Y, !Complete Y} {F} {G1 G2 : Hom X Y},
     F ⊢ gday2 G1 G2 <->
     forall A : X, F A ⊢ colim (fun As : {As0 : square X | As0.1 ⊗ As0.2 ⊢ A} =>
                             G1 (`As).1 ⊗ G2 (`As).2).
 Proof. done. Qed.
-Instance gday2_functor `{MonSet X, MonSet Y, !Bicomplete Y}
+Instance gday2_functor `{MonSet X, MonSet Y, !Complete Y}
   : Functor (gday2 (X:=X) (Y:=Y)).
 Proof. move=> F F' D G A /=; apply fmap' => ?; by setoid_rewrite D. Qed.
-Instance gday2_functor' `{MonSet X, MonSet Y, !Bicomplete Y} {F : Hom X Y}
+Instance gday2_functor' `{MonSet X, MonSet Y, !Complete Y} {F : Hom X Y}
   : Functor (gday2 F).
 Proof. move=> G G' D A /=; apply fmap' => ?; by setoid_rewrite D. Qed.
-Program Definition mon_coyo `{Proset X, MonSet Y, !Bicomplete Y} (A : op X) : Hom X Y
+Program Definition mon_coyo `{Proset X, MonSet Y, !Complete Y} (A : op X) : Hom X Y
   := fun B => mon_embed_prop (get_op A ⊢ B).
 Next Obligation.
   move=> X ? Y ? ? ? A B B' D.
   apply/fmap'; by setoid_rewrite D.
 Qed.
-Instance mon_coyo_functor `{Proset X, MonSet Y, !Bicomplete Y}
+Instance mon_coyo_functor `{Proset X, MonSet Y, !Complete Y}
   : Functor (mon_coyo (X:=X) (Y:=Y)).
 Proof. move=> A A' D B /=; apply/fmap'; by apply: transitivity. Qed.
-Definition gday2_memp `{MonSet X, MonSet Y, !Bicomplete Y} : Hom X Y
+Definition gday2_memp `{MonSet X, MonSet Y, !Complete Y} : Hom X Y
   := mon_coyo memp.
 Instance gday2_monoidal `{MonSet X, Quantale Y}
   : Monoidal pro_le (gday2 (X:=X) (Y:=Y)) gday2_memp.
@@ -2611,7 +2950,7 @@ Proof.
   move=> X ? ? Y ? ? ? ? ? ? A Factor; constructor.
   - apply/mon_embed_prop_left => //=.
   - move=> F G; apply/colim_left => -[[A1 A2] /= D].
-    apply/bimap; apply/fmap'; firstorder.
+    apply bimap; apply/fmap'; firstorder.
 Qed.
 Lemma gday_subst_strongmon : forall `{MonSet X, Quantale Y} {A : X} `{!Monoid A},
     factor_le A ->
@@ -2633,57 +2972,57 @@ Proof.
       by apply/(colim_right _ ((A1, A2) ↾ _)).
   - simpl; apply/colim_left => A; by apply/mon_embed_prop_left.
   - move=> F G; apply/colim_left => A; apply/colim_left => -[[A1 A2] /= D].
-    apply/bimap; apply/colim_right.
+    apply bimap; apply/colim_right.
 Qed.
 
 (* TODO Move these *)
-Instance lim_congr `{Bicomplete X} {R}
+Instance lim_congr `{Complete X} {R}
   : Proper (pointwise_relation R pro_le ++> pro_le) (lim (X:=X) (R:=R)).
 Proof. move=> J J' E; by apply/fmap'. Qed.
-Instance lim_congr' `{Bicomplete X} {R}
+Instance lim_congr' `{Complete X} {R}
   : Proper (pointwise_relation R pro_le --> flip pro_le) (lim (X:=X) (R:=R)).
 Proof. move=> J J' E; by apply/fmap'. Qed.
-Instance colim_congr `{Bicomplete X} {R}
+Instance colim_congr `{Complete X} {R}
   : Proper (pointwise_relation R pro_le ++> pro_le) (colim (X:=X) (R:=R)).
 Proof. move=> J J' E; by apply/fmap'. Qed.
-Instance colim_congr' `{Bicomplete X} {R}
+Instance colim_congr' `{Complete X} {R}
   : Proper (pointwise_relation R pro_le --> flip pro_le) (colim (X:=X) (R:=R)).
 Proof. move=> J J' E; by apply/fmap'. Qed.
-Definition r_coproduct `{Bicomplete X} (B : X) : X -> X := fun A => A + B.
+Definition r_coproduct `{Complete X} (B : X) : X -> X := fun A => A + B.
 Arguments r_coproduct {_ _ _} B _ /.
-Instance r_coproduct_functor `{Bicomplete X} {B} : Functor (r_coproduct B).
+Instance r_coproduct_functor `{Complete X} {B : X} : Functor (r_coproduct B).
 Proof.
   move=> A A' D /=.
   apply: coproduct_left.
   - by etransitivity; last apply: coproduct_right1.
   - apply: coproduct_right2.
 Qed.
-Instance product_proper `{Bicomplete X}
+Instance product_proper `{Complete X}
   : Proper (pro_le ++> pro_le ++> pro_le) (product (X:=X)).
 Proof. move=> ? ? D1 ? ? D2; setoid_rewrite D2; by apply/r_product_functor. Qed.
-Instance product_proper' `{Bicomplete X}
+Instance product_proper' `{Complete X}
   : Proper (pro_le --> pro_le --> flip pro_le) (product (X:=X)).
 Proof. move=> ? ? ? ? ? ? /=; by apply: product_proper. Qed.
-Instance product_proper_core `{Bicomplete X}
+Instance product_proper_core `{Complete X}
   : Proper (core pro_le ==> core pro_le ==> core pro_le) (product (X:=X)).
 Proof. move=> ? ? D1 ? ? D2; setoid_rewrite D2; by apply/(fmap_core (F:=r_product _)). Qed.
-Instance coproduct_proper `{Bicomplete X}
+Instance coproduct_proper `{Complete X}
   : Proper (pro_le ++> pro_le ++> pro_le) (coproduct (X:=X)).
 Proof. move=> ? ? D1 ? ? D2; setoid_rewrite D2; by apply/r_coproduct_functor. Qed.
-Instance coproduct_proper' `{Bicomplete X}
+Instance coproduct_proper' `{Complete X}
   : Proper (pro_le --> pro_le --> flip pro_le) (coproduct (X:=X)).
 Proof. move=> ? ? ? ? ? ? /=; by apply: coproduct_proper. Qed.
-Instance coproduct_proper_core `{Bicomplete X}
+Instance coproduct_proper_core `{Complete X}
   : Proper (core pro_le ==> core pro_le ==> core pro_le) (coproduct (X:=X)).
 Proof. move=> ? ? D1 ? ? D2; setoid_rewrite D2; by apply/(fmap_core (F:=r_coproduct _)). Qed.
 (* TODO Move these *)
-Instance Op_proper : forall `{Proset X}, Proper (pro_le --> pro_le) Op.
+Instance Op_proper : forall `{Proset X}, Proper (pro_le --> pro_le) (@Op X).
 Proof. firstorder. Qed.
-Instance Op_proper' : forall `{Proset X}, Proper (pro_le ++> flip pro_le) Op.
+Instance Op_proper' : forall `{Proset X}, Proper (pro_le ++> flip pro_le) (@Op X).
 Proof. firstorder. Qed.
-Instance get_op_proper : forall `{Proset X}, Proper (pro_le --> pro_le) get_op.
+Instance get_op_proper : forall `{Proset X}, Proper (pro_le --> pro_le) (@get_op X).
 Proof. firstorder. Qed.
-Instance get_op_proper' : forall `{Proset X}, Proper (pro_le ++> flip pro_le) get_op.
+Instance get_op_proper' : forall `{Proset X}, Proper (pro_le ++> flip pro_le) (@get_op X).
 Proof. firstorder. Qed.
 Instance cons_proper : forall `{Proset X}, Proper (pro_le ++> pro_le ++> pro_le) (@cons X).
 Proof. by constructor. Qed.
@@ -2927,8 +3266,6 @@ Qed.
 *)
 
 
-Local Set Universe Polymorphism.
-
 Definition PSh (X : Type) `{Proset X} : Type := Hom (op X) Prop.
 Identity Coercion psh_to_hom : PSh >-> Hom.
 (*
@@ -2985,13 +3322,13 @@ Lemma psh_subst_compose : forall `{Proset X, Proset Y} {Z} `{Proset Z}
 Proof. move=> X ? Y ? Z ? F G; apply/pw_core' => P; apply/Hom_core => -[A] //=. Qed.
 
 (* PSh as a free cocompletion. *)
-Definition yo_extend `{Proset X, Bicomplete Y} : (X -> Y) -> Hom (PSh X) Y
+Definition yo_extend `{Proset X, Complete Y} : (X -> Y) -> Hom (PSh X) Y
   := universal_lan yo.
 Arguments yo_extend {_ _ _ _ _} _ /.
 Definition yo_restrict `{Proset X, Proset Y} : Hom (PSh X) Y -> Hom X Y
   := (.○ in_Hom yo).
 Arguments yo_restrict {_ _ _ _} _ /.
-Lemma yo_extend_transpose : forall `{Proset X, Bicomplete Y} {F : Hom X Y} {G : Hom (PSh X) Y},
+Lemma yo_extend_transpose : forall `{Proset X, Complete Y} {F : Hom X Y} {G : Hom (PSh X) Y},
     yo_extend F ⊢ G <-> F ⊢ yo_restrict G.
 Proof. move=> *; apply: (transpose (Adj:=universal_lan_global_lan)). Qed.
 (* These next four lemmas are "primitive". From them, we can derive the rest of the
@@ -2999,28 +3336,28 @@ Proof. move=> *; apply: (transpose (Adj:=universal_lan_global_lan)). Qed.
 Definition yo_preimage `{Proset X, Proset Y} (F : Hom X Y) : Hom Y (PSh X)
   := yo_restrict (psh_subst F).
 Arguments yo_preimage {_ _ _ _} F /.
-Instance yo_extend_yo_preimage_adjoint `{Proset X, Bicomplete Y} {F : X -> Y} `{!Functor F}
+Instance yo_extend_yo_preimage_adjoint `{Proset X, Complete Y} {F : X -> Y} `{!Functor F}
   : yo_extend F ⊣ yo_preimage (in_Hom F).
 Proof.
   constructor.
   - move=> P [A] /= /yoneda PA; apply/(colim_right _ (A ↾ PA)).
   - move=> B /=; apply/colim_left => -[A /= D]; by apply: (D (Op A)).
 Qed.
-Lemma yo_extend_natural_post : forall `{Proset X, Bicomplete Y, Bicomplete Y'}
+Lemma yo_extend_natural_post : forall `{Proset X, Complete Y, Complete Y'}
                                  {F : Hom Y Y'} {G : X -> Y} `{!Cocontinuous F},
     yo_extend (F ∘ G) ⟛ F ○ yo_extend G.
 Proof.
   move=> X ? Y ? ? Y' ? ? F G ?; apply/Hom_core => P /=.
   symmetry; apply/distrib_colim.
 Qed.
-Lemma yo_restrict_extend : forall `{Proset X, Bicomplete Y} {F : Hom X Y},
+Lemma yo_restrict_extend : forall `{Proset X, Complete Y} {F : Hom X Y},
     yo_restrict (yo_extend F) ⟛ F.
 Proof.
   move=> X Pr_X Y Pr_Y ? F; split=> A.
   - apply/colim_left => -[A' D] /=; apply/fmap'/yo_full/D.
   - by unshelve apply/(colim_right _ (_↾ _)).
 Qed.
-Lemma yo_extend_restrict : forall `{Proset X, Bicomplete Y} {F : Hom (PSh X) Y}
+Lemma yo_extend_restrict : forall `{Proset X, Complete Y} {F : Hom (PSh X) Y}
                              `{!Cocontinuous F},
     yo_extend (yo_restrict F) ⟛ F.
 Proof.
@@ -3030,13 +3367,13 @@ Proof.
     apply/fmap' => -[A] /= /yoneda PA; by exists (A ↾ PA).
 Qed.
 
-Instance yo_extend_full `{Proset X, Bicomplete Y} : Full (X:=Hom X Y) yo_extend.
+Instance yo_extend_full `{Proset X, Complete Y} : Full (X:=Hom X Y) yo_extend.
 Proof.
   move=> F G /(fmap' (F:=yo_restrict)) D.
   setoid_rewrite yo_restrict_extend in D at 2.
     by setoid_rewrite <- (proj2 yo_restrict_extend) in D.
 Qed.
-Instance yo_restrict_full `{Proset X, Bicomplete Y} : Full (yo_restrict (X:=X) (Y:=Y)).
+Instance yo_restrict_full `{Proset X, Complete Y} : Full (yo_restrict (X:=X) (Y:=Y)).
 Proof.
   move=> F G /(fmap' (F:=yo_extend)) D.
 Abort. (* dammit *)
@@ -3047,7 +3384,7 @@ Lemma yo_restrict_natural_post : forall `{Proset X, Proset Y, Proset Y'}
                                    {F : Hom Y Y'} {G : Hom (PSh X) Y},
     yo_restrict (F ○ G) ⟛ F ○ yo_restrict G.
 Proof. by compute. Qed.
-Lemma yo_extend_natural_pre : forall `{Proset X, Proset Y, Bicomplete Y'}
+Lemma yo_extend_natural_pre : forall `{Proset X, Proset Y, Complete Y'}
                                 {F : Hom Y Y'} {G : X -> Y},
     yo_extend (F ∘ G) ⟛ yo_extend F ○ psh_map G.
 Proof.
@@ -3056,7 +3393,7 @@ Proof.
   change (F ∘ G ⟛ yo_restrict (yo_extend F) ∘ G).
   apply/(fmap_core (F:=(.∘ G)))/(symmetry yo_restrict_extend).
 Qed.
-Lemma yo_restrict_natural_pre : forall `{Proset X, Proset Y, Bicomplete Y'}
+Lemma yo_restrict_natural_pre : forall `{Proset X, Proset Y, Complete Y'}
                                   {F : Hom (PSh Y) Y'} {G : Hom X Y} `{!Cocontinuous F},
     yo_restrict (F ○ psh_map G) ⟛ yo_restrict F ○ G.
 Proof.
@@ -3102,11 +3439,11 @@ Instance adjoint_proper `{Proset X, Proset Y}
 Proof.
   move=> F F' E_F G G' E_G Adj; constructor=> A /=.
   - etransitivity.
-    + apply: adj_unit.
+    + apply: (adj_unit (Adjoint:=Adj)).
     + by apply E_G, E_F.
   - etransitivity.
     + by apply E_F, E_G.
-    + apply: adj_counit.
+    + apply: (adj_counit (Adjoint:=Adj)).
 Qed.
 Instance adjoint_proper' `{Proset X, Proset Y}
   : Proper ((core pro_le ==> core pro_le) ==> (core pro_le ==> core pro_le) ==> iff)
@@ -3119,27 +3456,27 @@ Proof.
   - move=> E A A' E_A; rewrite E_A E //.
   - move=> E; apply/pw_core' => A; by apply: E.
 Qed.
-Definition unyo `{Bicomplete X} : PSh X -> X
+Definition unyo `{Complete X} : PSh X -> X
   := yo_extend Hom_id.
 Arguments unyo {_ _ _} _ /.
 (* TODO Derive this from above results. *)
-Instance unyo_yo_adjoint `{Bicomplete X} : unyo (X:=X) ⊣ yo.
+Instance unyo_yo_adjoint `{Complete X} : unyo (X:=X) ⊣ yo.
 Proof.
   constructor.
   - move=> P [A] /= /yoneda PA; apply/(colim_right _ (A ↾ PA)).
   - move=> A /=; apply/colim_left => -[A' D] /=; by apply: (D (Op A')).
 Qed.
-Lemma unyo_yo_id : forall `{Bicomplete X}, unyo ∘ yo ⟛ @id X.
+Lemma unyo_yo_id : forall `{Complete X}, unyo ∘ yo ⟛ @id X.
 Proof. move=> *; apply: full_right_adjoint. Qed.
-Definition closure `{Bicomplete X} : PSh X -> PSh X
+Definition closure `{Complete X} : PSh X -> PSh X
   := yo ∘ unyo.
 Arguments closure {_ _ _} _ /.
-Fact closure_monad `{Bicomplete X} : Monad closure.
+Fact closure_monad `{Complete X} : Monad (closure (X:=X)).
 Proof. typeclasses eauto. Qed.
-Lemma closure_alg_rep : forall `{Bicomplete X} {P : PSh X} `{!Alg closure P},
+Lemma closure_alg_rep : forall `{Complete X} {P : PSh X} `{!Alg closure P},
     representable P.
 Proof. move=> X ? ? P ?; exists (unyo P); apply/(alg_fixed_point (M:=closure)). Qed.
-Lemma rep_closure_alg : forall `{Bicomplete X} {P : PSh X},
+Lemma rep_closure_alg : forall `{Complete X} {P : PSh X},
     representable P -> Alg closure P.
 Proof. move=> X ? ? P [A E]; apply/(Alg_proper _ _ E). Qed.
 Lemma coyoneda : forall `{Proset X}, yo_extend (in_Hom yo) ⟛ Hom_id (X:=PSh X).
@@ -3167,20 +3504,20 @@ Lemma psh_map_representable : forall `{Functor X Y F} {P},
     representable P -> representable (psh_map F P).
 Proof. move=> X ? Y ? F ? P [B H]; eexists; rewrite H psh_map_yo //. Qed.
 
-Lemma yo_colim : forall `{Bicomplete X} {R} {J : R -> X},
+Lemma yo_colim : forall `{Complete X} {R} {J : R -> X},
     yo (colim J) ⟛ closure (colim (yo ∘ J)).
 Proof.
   move=> *.
   apply/fmap_core; rewrite distrib_colim; apply/fmap_core.
   apply/pw_core' => ?; symmetry; apply/(pw_core unyo_yo_id).
 Qed.
-Lemma yo_colim2 : forall `{Bicomplete X} {R} {J : R -> X},
+Lemma yo_colim2 : forall `{Complete X} {R} {J : R -> X},
     colim (yo ∘ J) ⟛ yo (colim J) <-> representable (colim (yo ∘ J)).
 Proof.
   move=> X ? ? Y A; split=> [| /rep_closure_alg Rep]; first by eexists.
   rewrite yo_colim; apply/alg_fixed_point.
 Qed.
-Lemma bicomplete_rep : forall `{Bicomplete X} {P : PSh X},
+Lemma bicomplete_rep : forall `{Complete X} {P : PSh X},
     representable P <-> Continuous P.
 Proof.
   move=> X ? ? P; split.
@@ -3268,7 +3605,7 @@ Proof.
 Qed.
 Instance psh_cmset `{MonSet X} : ClosedMonSet (PSh X) := {}.
 Instance psh_lcmset `{MonSet X} : LClosedMonSet (PSh X) := {}.
-Instance psh_quantale `{MonSet X} : Quantale (PSh X).
+Instance psh_quantale `{MonSet X} : Quantale (PSh X) := {}.
 
 Program Definition psh_conj `{Proset X} (F G : PSh X) : PSh X
   := fun A => F A /\ G A.
@@ -3360,6 +3697,66 @@ Proof.
   - apply pro_runit.
   - setoid_rewrite <- (proj1 (pro_massoc C B A)); by setoid_rewrite (pro_sym A B).
 Qed.
+
+
+Definition DProp : Type := sigT Decision.
+Coercion dtag := tag : DProp -> Prop.
+Arguments dtag _ /.
+Instance dprop_decision {P : DProp} : Decision (tag P) := tagged P.
+Definition in_DProp (P : Prop) `{H : !Decision P} : DProp := existT P H.
+Definition pro_dprop : DProp -> DProp -> Prop :=
+  fun s1 s2 => dtag s1 ⊢ dtag s2.
+Arguments pro_dprop !_ !_ /.
+Instance pro_dprop_pro : PreOrder pro_dprop.
+Proof. firstorder. Qed.
+Instance dprop_proset : Proset DProp := {| pro_le := pro_dprop |}.
+Definition tens_dprop (s1 s2 : DProp) : DProp
+  := in_DProp (dtag s1 ⊗ dtag s2).
+Arguments tens_dprop !_ !_ /.
+Instance tens_dprop_monoidal :
+  Monoidal pro_le tens_dprop (in_DProp memp).
+Proof. compute; firstorder. Qed.
+Instance dprop_sym : Sym pro_le tens_dprop.
+Proof. compute; firstorder. Qed.
+Instance dprop_mset : MonSet DProp := {| pro_tens := tens_dprop |}.
+Instance dprop_smset : SymMonSet DProp := {}.
+Instance dtag_functor : Functor dtag.
+Proof. firstorder. Qed.
+Instance dtag_full : Full dtag.
+Proof. firstorder. Qed.
+Instance dtag_strongmon : StrongMon dtag.
+Proof. compute; firstorder. Qed.
+Notation Omniscient R := (DInfsOfShape R DProp).
+
+Lemma dtag_continuous : forall {R} {J : R -> DProp} `{!HasInf J},
+    dtag (inf J) <-> all (dtag ∘ J).
+Proof.
+  move=> R J ?; split=> H.
+  - move=> r /=; by apply: (proj1 (is_inf J) r).
+  - have ? : Decision (all (dtag ∘ J)) by constructor.
+    apply: (proj2 (is_inf J) (in_DProp (all (dtag ∘ J)))); firstorder.
+Qed.
+Definition omniscient_alt1 `{Omniscient R} : forall (P : R -> DProp), Decision (all P)
+  := fun P =>
+       match tagged (inf P) with
+       | left H => left (proj1 dtag_continuous H)
+       | right H => right (H ∘ proj2 dtag_continuous)
+       end.
+Program Definition omniscient_alt2 {R} (AllDec : forall (P : R -> DProp), Decision (all P))
+  : Omniscient R
+  := fun P => {| inf := in_DProp (all P) |}.
+Next Obligation. move=> *; by apply: (undistrib_inf (F:=dtag)). Qed.
+
+(*
+CoInductive conat := coO | coS (u : conat).
+Instance conat_omniscient' {P : conat -> DProp} : Decision (all P).
+ (∀ P : conat → DProp, Decision (all (λ x : conat, P x))).
+Program Instance conat_omniscient : Omniscient conat := omniscient_alt2 _.
+  := fun J _ => {| inf := ⊥ |}.
+Proof.
+  constructor.
+Qed.
+*)
 
 
 Class Profunctor {X Y} `{Proset X, Proset Y} (P : X -> Y -> Prop) :=
@@ -3927,13 +4324,13 @@ Instance optic_representable1 `{MonSet E, Proset X, Proset Y}
 Proof. move=> T; eexists=> S; by apply optic_concrete. Qed.
 
 (* Coyoneda facts in disguise! *)
-Definition extractable `{Bicomplete X, Proset Y} (P : X -> Y -> Prop) `{!Profunctor P} : Prop
+Definition extractable `{Complete X, Proset Y} (P : X -> Y -> Prop) `{!Profunctor P} : Prop
   := forall T (A : T -> X) B, (forall y, P (A y) B) -> P (colim A) B.
-Definition coextractable `{Proset X, Bicomplete Y} (P : X -> Y -> Prop) `{!Profunctor P} : Prop
+Definition coextractable `{Proset X, Complete Y} (P : X -> Y -> Prop) `{!Profunctor P} : Prop
   := forall T A (B : T -> Y), (forall y, P A (B y)) -> P A (lim B).
 
 Lemma representable_extractable :
-  forall `{Bicomplete X, Proset Y} {P : X -> Y -> Prop} `{!Profunctor P, !ProRepresentable P},
+  forall `{Complete X, Proset Y} {P : X -> Y -> Prop} `{!Profunctor P, !ProRepresentable P},
     extractable P.
 Proof.
   move=> X Pr_X Comp Y Pr_Y P Pro Rep T A B PAB.
@@ -3941,7 +4338,7 @@ Proof.
   apply Repr_B, colim_left => x; apply Repr_B, PAB.
 Qed.
 Lemma extractable_representable :
-  forall `{Bicomplete X, Proset Y} {P : X -> Y -> Prop} `{!Profunctor P},
+  forall `{Complete X, Proset Y} {P : X -> Y -> Prop} `{!Profunctor P},
     extractable P -> ProRepresentable P.
 Proof.
   move=> X Pr_X Comp Y Pr_Y P Pro Extr B.
@@ -3950,13 +4347,13 @@ Proof.
   - move=> D; apply (lmap D), Extr => -[A'] //.
 Qed.
 Lemma extractable_iff_representable :
-  forall `{Bicomplete X, Proset Y} {P : X -> Y -> Prop} `{!Profunctor P},
+  forall `{Complete X, Proset Y} {P : X -> Y -> Prop} `{!Profunctor P},
     extractable P <-> ProRepresentable P.
 Proof. move=> *; split; [apply: extractable_representable |
                         apply @representable_extractable]. Qed.
 
 Lemma corepresentable_coextractable :
-  forall `{Proset X, Bicomplete Y} {P : X -> Y -> Prop} `{!Profunctor P, !ProCorepresentable P},
+  forall `{Proset X, Complete Y} {P : X -> Y -> Prop} `{!Profunctor P, !ProCorepresentable P},
     coextractable P.
 Proof.
   move=> X Pr_X Y Pr_Y Comp P Pro Corep T A B PAB.
@@ -3964,7 +4361,7 @@ Proof.
   apply Repr_A, lim_right => x; apply Repr_A, PAB.
 Qed.
 Lemma coextractable_corepresentable :
-  forall `{Proset X, Bicomplete Y} {P : X -> Y -> Prop} `{!Profunctor P},
+  forall `{Proset X, Complete Y} {P : X -> Y -> Prop} `{!Profunctor P},
     coextractable P -> ProCorepresentable P.
 Proof.
   move=> X Pr_X Y Pr_Y Comp P Pro Extr A.
@@ -3973,7 +4370,7 @@ Proof.
   - move=> D; apply (rmap D), Extr => -[B'] //.
 Qed.
 Lemma coextractable_iff_corepresentable :
-  forall `{Proset X, Bicomplete Y} {P : X -> Y -> Prop} `{!Profunctor P},
+  forall `{Proset X, Complete Y} {P : X -> Y -> Prop} `{!Profunctor P},
     coextractable P <-> ProCorepresentable P.
 Proof. move=> *; split; [apply: coextractable_corepresentable |
                         apply @corepresentable_coextractable]. Qed.
@@ -4069,7 +4466,7 @@ Instance irel_core' `{Proset X} {Y}
 : subrelation (core (pro_le (X:=Y -> X))) (pointwise_relation Y (core (pro_le (X:=X)))).
 Proof. firstorder. Qed.
  *)
-Definition tens_irel `{MonSet X, !Bicomplete X} (Y : Type) (R1 R2 : irel X Y)
+Definition tens_irel `{MonSet X, !Complete X} (Y : Type) (R1 R2 : irel X Y)
   : irel X Y :=
   Irel (fun rho rho'' => colim (fun rho' : Y => R1 rho rho' ⊗ R2 rho' rho'')).
 Arguments tens_irel {X _ _ _} Y !R1 !R2 /.
@@ -4107,7 +4504,7 @@ Qed.
 Instance irel_mset `{Quantale X} {Y}
   : MonSet (irel X Y)
   := {| pro_tens := tens_irel Y |}.
-Program Instance irel_bicomplete `{Bicomplete X} {Y} : Bicomplete (irel X Y)
+Program Instance irel_bicomplete `{Complete X} {Y} : Complete (irel X Y)
   := {| lim R J := Irel (lim (ap_irel ∘ J)); colim R J := Irel (colim (ap_irel ∘ J)) |}.
 Next Obligation.
   move=> X Pr_X Comp Y R J; rewrite /lim /=; split=> [r | A' Cone] rho rho' /=.
@@ -4172,10 +4569,10 @@ Instance irel_basechange_strongmon `{Quantale X, Quantale X'}
   : StrongMon (irel_basechange (Y:=Y) F).
 Proof. constructor; typeclasses eauto. Qed.
 
-Definition rel_act `{MonSet X, !Bicomplete X} (Y : Type) (R : irel X Y)
+Definition rel_act `{MonSet X, !Complete X} (Y : Type) (R : irel X Y)
   : Endo (Y -> X)
   := in_Hom (fun Q rho => colim (fun rho' : Y => R rho rho' ⊗ Q rho')).
-Instance rel_act_functor `{MonSet X, !Bicomplete X} {Y}
+Instance rel_act_functor `{MonSet X, !Complete X} {Y}
   : Functor (rel_act (X:=X) Y).
 Proof.
   move=> A B D P /= rho.
@@ -4201,10 +4598,10 @@ Proof.
     setoid_rewrite <- colim_right; setoid_rewrite <- colim_right; rewrite -pro_massoc //=.
 Qed.
 
-Definition rel_act_op `{ClosedMonSet X, !Bicomplete X} (Y : Type) (R : op (irel X Y))
+Definition rel_act_op `{ClosedMonSet X, !Complete X} (Y : Type) (R : op (irel X Y))
   : Endo (Y -> X)
   := in_Hom (fun Q rho => lim (fun rho' : Y => get_op R rho rho' ⊸ Q rho')).
-Instance rel_act_op_functor `{ClosedMonSet X, !Bicomplete X} {Y}
+Instance rel_act_op_functor `{ClosedMonSet X, !Complete X} {Y}
   : Functor (rel_act_op (X:=X) Y).
 Proof. move=> [A] [B] /= D P rho; apply: fmap' => rho'; by setoid_rewrite D. Qed.
 Instance rel_act_op_strongmon `{Quantale X} {Y}
@@ -4268,11 +4665,11 @@ Proof.
   - move=> rho rho' /=; apply: mon_embed_prop_left => <- //.
   - move=> rho1 rho3 /=; apply: colim_left => rho2 //.
 Qed.
-Definition mon_embed_rel (X : Type) `{MonSet X, !Bicomplete X} {Y} (R : Y -> Y -> Prop)
+Definition mon_embed_rel (X : Type) `{MonSet X, !Complete X} {Y} (R : Y -> Y -> Prop)
   : Y -> Y -> X
   := fun a b => mon_embed_prop (R a b).
 Arguments mon_embed_rel _ {_ _ _ _} _ _ _ /.
-Definition prop_irel (X : Type) `{MonSet X, !Bicomplete X} {Y} : (Y -> Y -> Prop) -> irel X Y
+Definition prop_irel (X : Type) `{MonSet X, !Complete X} {Y} : (Y -> Y -> Prop) -> irel X Y
   := Irel ∘ mon_embed_rel X.
 Arguments prop_irel _ {_ _ _ _} _ /.
 Instance prop_irel_monoid `{Quantale X, PreOrder Y R}
@@ -4314,7 +4711,7 @@ Proof.
     apply/l_tensor_hom; rewrite pro_runit; by apply/Hered'.
 Qed.
 (* TODO Move this *)
-Instance mon_embed_prop_comonoid `{MonSet X, !Bicomplete X} {P : Prop}
+Instance mon_embed_prop_comonoid `{MonSet X, !Complete X} {P : Prop}
   : Comonoid (mon_embed_prop P).
 Proof.
   constructor.
@@ -4362,7 +4759,7 @@ Proof.
   setoid_rewrite <- colim_right; [| done]; apply/lim_right => -[].
 Qed.
 
-Definition dia `{MonSet X, !Bicomplete X} {Y} (Reach : irel X Y) : (Y -> X) -> Y -> X
+Definition dia `{MonSet X, !Complete X} {Y} (Reach : irel X Y) : (Y -> X) -> Y -> X
   := rel_act _ Reach.
 Arguments dia {_ _ _ _ _} _ _ /.
 (* box is a monad if Reach is a preorder *)
@@ -4513,13 +4910,13 @@ Qed.
 Instance act_dualnum_proset `{Proset E, Proset X} {F : E -> Endo X}
   : Proset (act_dualnum F)
   := {| pro_le := pro_act_dualnum F |}.
-Definition tens_act_dualnum `{MonSet E, Bicomplete X}
+Definition tens_act_dualnum `{MonSet E, Complete X}
            (F : E -> Endo X) (a1 a2 : act_dualnum F) : act_dualnum F
   := let (r1, ε1) := a1 in
      let (r2, ε2) := a2 in
      ActDualnum F (r1 + F ε1 r2) (ε1 ⊗ ε2).
 Arguments tens_act_dualnum {E _ _ _ _ _} F !a1 !a2 /.
-Instance pro_act_dualnum_monoidal `{MonSet E, Bicomplete X}
+Instance pro_act_dualnum_monoidal `{MonSet E, Complete X}
          {F : E -> Endo X} `{!Functor F, !StrongMon F, !forall M, Cocontinuous (F M)}
   : Monoidal pro_le (tens_act_dualnum F) (ActDualnum F ⊥ memp).
 Proof.
@@ -4554,7 +4951,7 @@ Proof.
         apply/(pres_tens_op (F:=F)).
     + apply/(proj2 (pro_massoc _ _ _)).
 Qed.
-Instance act_dualnum_mset `{MonSet E, Bicomplete X}
+Instance act_dualnum_mset `{MonSet E, Complete X}
          {F : E -> Endo X} `{!Functor F, !StrongMon F, !forall M, Cocontinuous (F M)}
   : MonSet (act_dualnum F) := {| pro_tens := tens_act_dualnum F |}.
 Lemma act_dualnum_cone : forall `{Proset E, Proset X} {F : E -> Endo X}
@@ -4588,8 +4985,8 @@ Proof.
   rewrite /colim_cocone ad_curry_dep /=; setoid_rewrite (act_dualnum_cocone (J:=J));
     firstorder.
 Qed.
-Program Instance act_dualnum_bicomplete `{Bicomplete E, Bicomplete X} {F : E -> Endo X}
-  : Bicomplete (act_dualnum F)
+Program Instance act_dualnum_bicomplete `{Complete E, Complete X} {F : E -> Endo X}
+  : Complete (act_dualnum F)
   := {| lim R J := ActDualnum F (lim (act_realpart ∘ J)) (lim (act_infpart ∘ J));
         colim R J := ActDualnum F (colim (act_realpart ∘ J)) (colim (act_infpart ∘ J)) |}.
 Next Obligation.
@@ -4657,19 +5054,19 @@ Proof.
   move=> R J d [C U]; split=> [r | d_ε' C'] /=; first by firstorder.
   apply: (proj2 (U (ActDualnum F (act_realpart d) d_ε') _)) => r; firstorder.
 Qed.
-Instance ActDualnum0_act_infpart_adjoint `{Proset E, Bicomplete X} {F : E -> Endo X}
+Instance ActDualnum0_act_infpart_adjoint `{Proset E, Complete X} {F : E -> Endo X}
   : ActDualnum F ⊥ ⊣ act_infpart.
 Proof. constructor=> [M | [A_r A_ε]] //=; by split; first apply: initial_left. Qed.
-Instance act_infpart_ActDualnum1_adjoint `{Proset E, Bicomplete X} {F : E -> Endo X}
+Instance act_infpart_ActDualnum1_adjoint `{Proset E, Complete X} {F : E -> Endo X}
   : act_infpart ⊣ ActDualnum F ⊤.
 Proof. constructor=> [[A_r A_ε] | M] //=; by split; first apply: terminal_right. Qed.
-Instance r_ActDualnum0_act_realpart_adjoint `{Bicomplete E, Proset X} {F : E -> Endo X}
+Instance r_ActDualnum0_act_realpart_adjoint `{Complete E, Proset X} {F : E -> Endo X}
   : r_ActDualnum F ⊥ ⊣ act_realpart.
 Proof. constructor=> [M | [A_r A_ε]] //=; by split; last apply: initial_left. Qed.
-Instance act_realpart_r_ActDualnum1_adjoint `{Bicomplete E, Proset X} {F : E -> Endo X}
+Instance act_realpart_r_ActDualnum1_adjoint `{Complete E, Proset X} {F : E -> Endo X}
   : act_realpart ⊣ r_ActDualnum F ⊤.
 Proof. constructor=> [[A_r A_ε] | M] //=; by split; last apply: terminal_right. Qed.
-Instance ActDualnum0_strongmon `{MonSet E, Bicomplete X} {F : E -> Endo X}
+Instance ActDualnum0_strongmon `{MonSet E, Complete X} {F : E -> Endo X}
          `{!Functor F, !StrongMon F, !forall M, Cocontinuous (F M)}
   : StrongMon (ActDualnum F ⊥).
 Proof.
@@ -4678,7 +5075,7 @@ Proof.
     rewrite distrib_colim; apply/colim_left => -[].
   - apply: initial_left.
 Qed.
-Instance ActDualnum1_strongmon `{MonSet E, Bicomplete X} {F : E -> Endo X}
+Instance ActDualnum1_strongmon `{MonSet E, Complete X} {F : E -> Endo X}
          `{!Functor F, !StrongMon F, !forall M, Cocontinuous (F M)}
   : LaxMon (ActDualnum F ⊤).
 Proof.
@@ -4686,7 +5083,7 @@ Proof.
   - split; [apply: initial_left | done].
   - split; [apply: terminal_right | done].
 Qed.
-Instance act_infpart_strongmon `{MonSet E, Bicomplete X} {F : E -> Endo X}
+Instance act_infpart_strongmon `{MonSet E, Complete X} {F : E -> Endo X}
          `{!Functor F, !StrongMon F, !forall M, Cocontinuous (F M)}
   : StrongMon (act_infpart (F:=F)).
 Proof. apply/triple_strong. Qed.
@@ -4700,7 +5097,7 @@ Instance act_dualnum_emap_functor `{Functor E E' Φ, Proset X}
   : Functor (act_dualnum_emap (F:=F) (F':=F') Φ).
 Proof. move=> [A_r A_ε] [B_r B_ε] /= [D1 D2]; by split; last apply: fmap'. Qed.
 Instance act_dualnum_emap_laxmon
-         `{Functor E E' Φ, !MonSet E, !MonSet E', !LaxMon Φ, Bicomplete X}
+         `{Functor E E' Φ, !MonSet E, !MonSet E', !LaxMon Φ, Complete X}
          {F : E -> Endo X} {F' : E' -> Endo X}
          `{!Functor F, !Functor F', !StrongMon F, !StrongMon F',
            !forall M, Cocontinuous (F M), !forall M, Cocontinuous (F' M)}
@@ -4713,7 +5110,7 @@ Proof.
     apply/fmap'/act_triangle_op.
 Qed.
 Instance act_dualnum_emap_oplaxmon
-         `{Functor E E' Φ, !MonSet E, !MonSet E', !OplaxMon Φ, Bicomplete X}
+         `{Functor E E' Φ, !MonSet E, !MonSet E', !OplaxMon Φ, Complete X}
          {F : E -> Endo X} {F' : E' -> Endo X}
          `{!Functor F, !Functor F', !StrongMon F, !StrongMon F',
            !forall M, Cocontinuous (F M), !forall M, Cocontinuous (F' M)}
@@ -4726,7 +5123,7 @@ Proof.
     apply/fmap'/act_triangle.
 Qed.
 Instance act_dualnum_emap_strongmon
-         `{Functor E E' Φ, !MonSet E, !MonSet E', !StrongMon Φ, Bicomplete X}
+         `{Functor E E' Φ, !MonSet E, !MonSet E', !StrongMon Φ, Complete X}
          {F : E -> Endo X} {F' : E' -> Endo X}
          `{!Functor F, !Functor F', !StrongMon F, !StrongMon F',
            !forall M, Cocontinuous (F M), !forall M, Cocontinuous (F' M)}
@@ -4743,7 +5140,7 @@ Instance act_dualnum_xmap_functor `{Proset E, Functor X X' Φ}
   : Functor (act_dualnum_xmap (F:=F) (F':=F') Φ).
 Proof. move=> [A_r A_ε] [B_r B_ε] /= [D1 D2]; by split; first apply: fmap'. Qed.
 Instance act_dualnum_xmap_laxmon
-         `{MonSet E, Functor X X' Φ, !Bicomplete X, !Bicomplete X'}
+         `{MonSet E, Functor X X' Φ, !Complete X, !Complete X'}
          {F : E -> Endo X} {F' : E -> Endo X'}
          `{!Functor F, !Functor F', !StrongMon F, !StrongMon F',
            !forall M, Cocontinuous (F M), !forall M, Cocontinuous (F' M)}
@@ -4757,7 +5154,7 @@ Proof.
     setoid_rewrite <- coproduct_right2; apply/act_square.
 Qed.
 Instance act_dualnum_xmap_oplaxmon
-         `{MonSet E, Functor X X' Φ, !Cocontinuous Φ, !Bicomplete X, !Bicomplete X'}
+         `{MonSet E, Functor X X' Φ, !Cocontinuous Φ, !Complete X, !Complete X'}
          {F : E -> Endo X} {F' : E -> Endo X'}
          `{!Functor F, !Functor F', !StrongMon F, !StrongMon F',
            !forall M, Cocontinuous (F M), !forall M, Cocontinuous (F' M)}
@@ -4772,7 +5169,7 @@ Proof.
     setoid_rewrite <- coproduct_right2; apply/act_square_op.
 Qed.
 Instance act_dualnum_xmap_strongmon
-         `{MonSet E, Functor X X' Φ, !Cocontinuous Φ, !Bicomplete X, !Bicomplete X'}
+         `{MonSet E, Functor X X' Φ, !Cocontinuous Φ, !Complete X, !Complete X'}
          {F : E -> Endo X} {F' : E -> Endo X'}
          `{!Functor F, !Functor F', !StrongMon F, !StrongMon F',
            !forall M, Cocontinuous (F M), !forall M, Cocontinuous (F' M)}
@@ -4780,20 +5177,20 @@ Instance act_dualnum_xmap_strongmon
   : StrongMon (act_dualnum_xmap (F:=F) (F':=F') Φ).
 Proof. constructor; typeclasses eauto. Qed.
 
-Definition affinify {E} `{Bicomplete X} (F : E -> Endo X) : act_dualnum F -> Endo X
+Definition affinify {E} `{Complete X} (F : E -> Endo X) : act_dualnum F -> Endo X
   := (fun d A => act_realpart d + F (act_infpart d) A) ↑.
 (* It turns out that in particular instances, instance resolution will try to use the
    '↑' instances instead of the subsequent 'affinify' instances unless we make 'affinify'
    typeclass opaque. The former instances are insufficient, so opacity is necessary. *)
 Typeclasses Opaque affinify.
-Instance affinify_functor `{MonSet E, Bicomplete X} {F : E -> Endo X} `{!Functor F}
+Instance affinify_functor `{MonSet E, Complete X} {F : E -> Endo X} `{!Functor F}
   : Functor (affinify F).
 Proof.
   change (affinify F) with (liftR2 Hom_compose
     ((coproduct ∘ act_realpart (F:=F)) ↑) (F ∘ act_infpart)).
   apply: liftR2_functor. (* typeclasses eauto also works, but this is faster *)
 Qed.
-Instance affinify_strongmon `{MonSet E, Bicomplete X}
+Instance affinify_strongmon `{MonSet E, Complete X}
          {F : E -> Endo X} `{!Functor F, !StrongMon F, !forall M, Cocontinuous (F M)}
   : StrongMon (affinify F).
 Proof.
@@ -4849,18 +5246,18 @@ Instance snd_strong_acm {E} `{Proset X, Proset Y} {L : E -> Endo X} {R : E -> En
   : StrongEquivariant (prod_act L R) R snd.
 Proof. constructor=> M [A B] //=. Qed.
 (*
-Instance act_dualnum_mset `{MonSet E, Bicomplete X}
+Instance act_dualnum_mset `{MonSet E, Complete X}
          {F : E -> Endo X} `{!Functor F, !StrongMon F, !forall M, Cocontinuous (F M)}
 *)
-Definition affinifyL {E} `{Bicomplete X, Proset Y} (L : E -> Endo X) {R : E -> Endo Y}
+Definition affinifyL {E} `{Complete X, Proset Y} (L : E -> Endo X) {R : E -> Endo Y}
   : act_dualnum (prod_act L R) -> Endo X
   := affinify L ∘ act_dualnum_xmap fst.
-Definition affinifyR {E} `{Proset X, Bicomplete Y} {L : E -> Endo X} (R : E -> Endo Y)
+Definition affinifyR {E} `{Proset X, Complete Y} {L : E -> Endo X} (R : E -> Endo Y)
   : act_dualnum (prod_act L R) -> Endo Y
   := affinify R ∘ act_dualnum_xmap snd.
 
 Instance affinify_lax_equivariant
-         `{MonSet E, Bicomplete X, Bicomplete X'} {F : E -> Endo X} {F' : E -> Endo X'}
+         `{MonSet E, Complete X, Complete X'} {F : E -> Endo X} {F' : E -> Endo X'}
          `{!Functor F, !Functor F', !StrongMon F, !StrongMon F',
            !forall M, Cocontinuous (F M), !forall M, Cocontinuous (F' M)}
          {Φ : X -> X'} `{!Functor Φ, !LaxEquivariant F F' Φ}
@@ -4871,7 +5268,7 @@ Proof.
   setoid_rewrite <- coproduct_right2; apply/act_square.
 Qed.
 Instance affinify_oplax_equivariant
-         `{MonSet E, Bicomplete X, Bicomplete X'} {F : E -> Endo X} {F' : E -> Endo X'}
+         `{MonSet E, Complete X, Complete X'} {F : E -> Endo X} {F' : E -> Endo X'}
          `{!Functor F, !Functor F', !StrongMon F, !StrongMon F',
            !forall M, Cocontinuous (F M), !forall M, Cocontinuous (F' M)}
          {Φ : X -> X'} `{!Functor Φ, !Cocontinuous Φ, !OplaxEquivariant F F' Φ}
@@ -4883,14 +5280,14 @@ Proof.
   + setoid_rewrite <- coproduct_right2; apply/act_square_op.
 Qed.
 Instance affinify_strong_equivariant
-         `{MonSet E, Bicomplete X, Bicomplete X'} {F : E -> Endo X} {F' : E -> Endo X'}
+         `{MonSet E, Complete X, Complete X'} {F : E -> Endo X} {F' : E -> Endo X'}
          `{!Functor F, !Functor F', !StrongMon F, !StrongMon F',
            !forall M, Cocontinuous (F M), !forall M, Cocontinuous (F' M)}
          {Φ : X -> X'} `{!Functor Φ, !Cocontinuous Φ, !StrongEquivariant F F' Φ}
   : StrongEquivariant (affinify F) (affinify F' ∘ act_dualnum_xmap Φ) Φ.
 Proof. constructor; typeclasses eauto. Qed.
 
-Lemma liftR2_adj' : forall `{Bicomplete R, Proset X, Proset Y, Bicomplete R'}
+Lemma liftR2_adj' : forall `{Complete R, Proset X, Proset Y, Complete R'}
                        {A : R -> X}  {B : R -> Y} {A_Adj : X -> R} {B_Adj : Y -> R}
                        {A' : R' -> X} {B' : R' -> Y} {A'_Adj : X -> R'} {B'_Adj : Y -> R'}
                        `{!A ⊣ A_Adj, !B ⊣ B_Adj, !A'_Adj ⊣ A', !B'_Adj ⊣ B',
@@ -4911,21 +5308,21 @@ Qed.
 (* TODO Move these *)
 Instance id_id_adjoint `{Proset X} : (@id X) ⊣ id.
 Proof. done. Qed.
-Instance pair0_snd_adjoint `{Bicomplete X, Proset Y}
+Instance pair0_snd_adjoint `{Complete X, Proset Y}
   : pair ⊥ ⊣ (@snd X Y).
 Proof. constructor=> [B | [A B]] //=; by split; first apply: initial_left. Qed.
-Instance snd_pair1_adjoint `{Bicomplete X, Proset Y}
+Instance snd_pair1_adjoint `{Complete X, Proset Y}
   : (@snd X Y) ⊣ pair ⊤.
 Proof. constructor=> [[A B] | B] //=; by split; first apply: terminal_right. Qed.
-Instance r_pair0_fst_adjoint `{Proset X, Bicomplete Y}
+Instance r_pair0_fst_adjoint `{Proset X, Complete Y}
   : r_pair ⊥ ⊣ (@fst X Y).
 Proof. constructor=> [A | [A B]] //=; by split; last apply: initial_left. Qed.
-Instance fst_r_pair1_adjoint `{Proset X, Bicomplete Y}
+Instance fst_r_pair1_adjoint `{Proset X, Complete Y}
   : (@fst X Y) ⊣ r_pair ⊤.
 Proof. constructor=> [[A B] | A] //=; by split; last apply: terminal_right. Qed.
 
 Theorem affinify_concrete :
-  forall `{MonSet E, !Bicomplete E, Bicomplete X, Bicomplete Y}
+  forall `{MonSet E, !Complete E, Complete X, Complete Y}
     {L : E -> Endo X} {R : E -> Endo Y}
     `{!Functor L, !Functor R, !StrongMon L, !StrongMon R,
       !forall M, Cocontinuous (L M), !forall M, Cocontinuous (R M)}
@@ -4958,7 +5355,7 @@ Proof.
 Qed.
 
 Corollary affinify_concrete1 :
-  forall `{MonSet E, !Bicomplete E, Bicomplete X}
+  forall `{MonSet E, !Complete E, Complete X}
     {F : E -> Endo X}
     `{!Functor F, !StrongMon F, !forall M, Cocontinuous (F M)}
     {S T A B : X} {R_B : X -> E} `{!Hom_eval_at B ∘ F ⊣ R_B, !Functor R_B},
@@ -5074,8 +5471,8 @@ Instance series_adjunction1 `{Proset E} : Series (E:=E) ⊣ get_coeff.
 Proof. constructor=> [? | [?]] //=. Qed.
 Instance series_adjunction2 `{Proset E} : get_coeff (E:=E) ⊣ Series.
 Proof. constructor=> [[?] | ?] //=. Qed.
-Program Instance series_bicomplete `{Bicomplete E}
-  : Bicomplete (series E)
+Program Instance series_bicomplete `{Complete E}
+  : Complete (series E)
   := {| lim R J := Series (lim (get_coeff ∘ J));
         colim R J := Series (colim (get_coeff ∘ J)) |}.
 Next Obligation. move=> *; apply: (create_lim_cone (F:=Series)). Qed.
@@ -5083,17 +5480,17 @@ Next Obligation. move=> *; apply: (create_colim_cocone (F:=Series)). Qed.
 *)
 
 (*
-Program Definition series_mul `{MonSet E, !Bicomplete E} (a1 a2 : series E) : series E
+Program Definition series_mul `{MonSet E, !Complete E} (a1 a2 : series E) : series E
   := (fun i => colim (fun ii : {ii | add_d ii.1 ii.2 = i} =>
                      a1 (`ii).1 ⊗ a2 (`ii).2)).
 Arguments series_mul {E _ _ _} !a1 !a2 /.
-Goal forall `{MonSet E, !Bicomplete E} {a1 a2 : series E}, series_mul a1 a2 ⟛ gday a1 a2.
+Goal forall `{MonSet E, !Complete E} {a1 a2 : series E}, series_mul a1 a2 ⟛ gday a1 a2.
 Proof. intros *. rewrite /series_mul /gday /convolve /universal_lan /= -Hom_core /=.
        move=> n; split; apply/colim_left.
        - move=> [[n1 n2] /= E']; by apply/(colim_right _ (paird _ _ ↾ E')).
        - move=> [ns /= E']; apply/(colim_right _ ((_, _) ↾ E')).
 Qed.
-Definition series_one `{MonSet E, !Bicomplete E} : series E
+Definition series_one `{MonSet E, !Complete E} : series E
   := Series (fun i => if Nat.eqb i 0 then memp else ⊥).
 Instance series_mul_monoidal `{Quantale E}
   : Monoidal (pro_le (X:=series E)) (series_mul (E:=E)) series_one.
@@ -5129,15 +5526,15 @@ Proof.
       rewrite /= pro_massoc //.
 Qed.
 *)
-Definition series_pow `{MonSet E, !Bicomplete E} (n : nat) (M : series E) : series E
+Definition series_pow `{MonSet E, !Complete E} (n : nat) (M : series E) : series E
   := Nat.iter n (gday2 M) gday2_memp.
-Instance series_pow_proper `{MonSet E, !Bicomplete E}
+Instance series_pow_proper `{MonSet E, !Complete E}
   : Proper ((=) ==> pro_le ++> pro_le) (series_pow (E:=E)).
 Proof.
   move=> n _ <- M M' D; elim: n => //= n D'.
   setoid_rewrite D at 1; by setoid_rewrite D'.
 Qed.
-Instance series_pow_proper' `{MonSet E, !Bicomplete E}
+Instance series_pow_proper' `{MonSet E, !Complete E}
   : Proper ((=) ==> pro_le --> flip pro_le) (series_pow (E:=E)).
 Proof. move=> n _ <- M M'; by apply: series_pow_proper. Qed.
 Lemma series_pow_assoc : forall `{Quantale E} {n m} {A : series E},
@@ -5160,7 +5557,7 @@ Program Definition scale `{MonSet E} (M : E) (a : series E) : series E
 Definition tens_series `{Quantale E} (a1 a2 : series E) : series E
   := colim (fun i => scale (a1 (Discrete i)) (series_pow i a2)).
 Arguments tens_series {E _ _ _ _ _ _} !a1 !a2 /.
-Program Definition series_id `{MonSet E, !Bicomplete E} : series E
+Program Definition series_id `{MonSet E, !Complete E} : series E
   := fun i => if Nat.eqb (get_discrete i) 1 then memp else ⊥.
 Lemma pow_id : forall `{Quantale E} {i j},
     series_pow i series_id j ⟛ if Nat.eqb i (get_discrete j) then memp else ⊥.
@@ -5264,11 +5661,11 @@ Qed.
 Instance series_mset `{Quantale E, !SymMonSet E}
   : MonSet (series E) := {| pro_tens := tens_series |}.
 
-Program Definition series_act {E} `{MonSet X, !Bicomplete X} (F : E -> Endo X)
+Program Definition series_act {E} `{MonSet X, !Complete X} (F : E -> Endo X)
   : series E -> Endo X
   := fun a x => colim (fun i => F (a i) (pow i x)).
 Next Obligation. move=> E X ? ? ? F a A B D; by setoid_rewrite D. Qed.
-Instance series_act_functor `{Proset E, MonSet X, !Bicomplete X} {F : E -> Endo X}
+Instance series_act_functor `{Proset E, MonSet X, !Complete X} {F : E -> Endo X}
          `{!Functor F}
   : Functor (series_act F).
 Proof. move=> a1 a2 D A /=; by setoid_rewrite D. Qed.
