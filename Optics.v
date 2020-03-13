@@ -6,14 +6,15 @@ Require Import stdpp.list.
 
 Declare Scope proset_scope.
 Declare Scope proset_util_scope.
+Declare Scope optic_scope.
 Local Open Scope proset_scope.
 Local Open Scope proset_util_scope.
+Local Open Scope optic_scope.
 (* Local Set Universe Polymorphism. *)
 
 Class Proset (X : Type) := {pro_le : X -> X -> Prop; pro_pro :> PreOrder pro_le}.
 Hint Mode Proset ! : typeclass_instances.
 Infix "⊢" := pro_le (no associativity, at level 70) : proset_scope.
-Local Open Scope proset_scope.
 Arguments pro_le {_ _} !_ !_ /.
 Definition core {X} (R : X -> X -> Prop) : X -> X -> Prop := fun a1 a2 => R a1 a2 /\ R a2 a1.
 Instance core_sub1 {X} {R : X -> X -> Prop} : subrelation (core R) R | 10.
@@ -318,7 +319,6 @@ Notation "f ▷ P" := (restrict_cod P f) (at level 20) : proset_util_scope.
 Notation "f ↑" := (restrict_cod _ f) (at level 20) : proset_util_scope.
 Notation "f ↣ T" := (restrict_cod_ph (Phant T) f : _ -> T)
                       (at level 20) : proset_util_scope.
-Local Open Scope proset_util_scope.
 Arguments pack {_} _ _ {_} /.
 Arguments pack_ph {_ _} _ _ {_} /.
 Arguments restrict_cod {_ _} _ _ {_} _ /.
@@ -4063,7 +4063,6 @@ Definition optic_compose {E} `{Proset X, Proset Y} {L : E -> Endo X} {R : E -> E
   : optic L R S T W Z
   := fun _ _ _ => l _ _ _ ∘ m _ _ _.
 Infix "∘∘" := optic_compose (at level 40) : optic_scope.
-Local Open Scope optic_scope.
 Definition optic_frame {E} `{Proset X, Proset Y}
            {L : E -> Endo X} {R : E -> Endo Y} {M A B}
   : optic L R (L M A) (R M B) A B
