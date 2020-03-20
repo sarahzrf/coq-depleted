@@ -81,6 +81,18 @@ Proof. firstorder. Qed.
 Lemma di `{Proset X, Proset Y, Proset Z'} (F : X -> Y -> Z') `{!Dimonotone F} {A B P Q}
   : B ⊢ A -> P ⊢ Q -> F A P ⊢ F B Q.
 Proof. firstorder. Qed.
+Lemma bi_l `{Proset X, Proset Y, Proset Z'} (F : X -> Y -> Z') `{!Bimonotone F} {A B P}
+  : A ⊢ B -> F A P ⊢ F B P.
+Proof. move=> *; by apply: bi. Qed.
+Lemma bi_r `{Proset X, Proset Y, Proset Z'} (F : X -> Y -> Z') `{!Bimonotone F} {A P Q}
+  : P ⊢ Q -> F A P ⊢ F A Q.
+Proof. move=> *; by apply: bi. Qed.
+Lemma di_l `{Proset X, Proset Y, Proset Z'} (F : X -> Y -> Z') `{!Dimonotone F} {A B P}
+  : B ⊢ A -> F A P ⊢ F B P.
+Proof. move=> *; by apply: di. Qed.
+Lemma di_r `{Proset X, Proset Y, Proset Z'} (F : X -> Y -> Z') `{!Dimonotone F} {A P Q}
+  : P ⊢ Q -> F A P ⊢ F A Q.
+Proof. move=> *; by apply: di. Qed.
 Lemma reflect `{Proset X, Proset Y} (F : X -> Y) `{!Reflecting F} {A B}
   : F A ⊢ F B -> A ⊢ B.
 Proof. firstorder. Qed.
@@ -333,7 +345,7 @@ Instance ap_Hom_bi' `{Proset X, Proset Y}
   : Proper (pro_le --> pro_le --> flip pro_le) (ap_Hom (X:=X) (Y:=Y)).
 Proof. move=> [? ?] [? ?] /= D ? ? /= D'; by setoid_rewrite D'. Qed.
 *)
-Instance hom_mono `{Proset X, Proset Y} (F : Hom X Y) : Monotone F := proj2_sig _.
+Instance Hom_mono `{Proset X, Proset Y} (F : Hom X Y) : Monotone F := proj2_sig _.
 Lemma ap_map `{Proset X, Proset Y} {F F' : Hom X Y} {A}
   : F ⊢ F' -> F A ⊢ F' A.
 Proof. intros *; apply. Qed.

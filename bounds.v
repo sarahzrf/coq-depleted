@@ -573,39 +573,6 @@ Notation Rex F := (forall `{H : EqDecision R}, @Finite R H -> PresDSupsOfShape R
 Notation ScottContinuous F :=
   (forall `{H : Proset R}, @Directed R H -> PresSupsOfShape R F).
 
-(* Example *)
-Definition fixed_point `{Proset X} (F : X -> X) (A : X) : Prop
-  := F A ⟛ A.
-Definition kleene_chain `{Proset X, !Bot X} (F : X -> X) : nat -> X
-  := fun n => Nat.iter n F ⊥.
-Lemma kleene_chain_chain `{Proset X, !Bot X} {F : X -> X} `{!Monotone F}
-  : chain (kleene_chain F).
-Proof. elim=> /= [| n]; [apply/bot_left | apply/mono]. Qed.
-Instance kleene_chain_mono `{Proset X, !Bot X} {F : X -> X} `{!Monotone F}
-  : Monotone (kleene_chain F).
-Proof. apply/chain_mono/kleene_chain_chain. Qed.
-Theorem kleene `{Proset X, !DirectedComplete X, !Bot X} {F : X -> X}
-        `{!Monotone F, !ScottContinuous F}
-  : least (fixed_point F) (sup (kleene_chain F)).
-Proof.
-  split.
-  - rewrite /fixed_point distrib_sup; split; apply/sup_left => n.
-    + by apply/(sup_right (S n)).
-    + apply/(sup_right n)/kleene_chain_chain.
-  - move=> A FP; apply/sup_left; elim=> /= [| n].
-    + apply/bot_left.
-    + move=> D; unfold fixed_point in FP.
-      setoid_rewrite <- (proj1 FP); by apply/mono.
-Qed.
-(*
-Class Continuous `{Proset X, Proset Y} (F : X -> Y) :=
-  distrib_glb : forall {R} (J : R -> X) `{!HasInf J}, glb (F ∘ J) (F (inf J)).
-Class Cocontinuous `{Proset X, Proset Y} (F : X -> Y) :=
-  distrib_lub : forall {R} (J : R -> X) `{!HasSup J}, lub (F ∘ J) (F (sup J)).
-Hint Mode Continuous ! - ! - ! : typeclass_instances.
-Hint Mode Cocontinuous ! - ! - ! : typeclass_instances.
-*)
-
 Lemma F_inf `{Proset X, Proset Y} {R} {F : X -> Y} {J : R -> X}
       `{!Monotone F, !HasInf J, !HasInf (F ∘ J)}
   : F (inf J) ⊢ inf (fun r => F (J r)).
@@ -620,6 +587,39 @@ Proof. move=> Distr R J; apply/preserves_inf_alt2; split; [apply/F_inf | apply/D
 Lemma distrib_sup_sufficient `{Complete X, Complete Y} {F : X -> Y} `{!Monotone F}
   : (forall {R} (J : R -> X), F (sup J) ⊢ sup (F ∘ J)) -> Cocontinuous F.
 Proof. move=> Distr R J; apply/preserves_sup_alt2; split; [apply/Distr | apply/F_sup]. Qed.
+
+Instance id_continuous `{Proset X} : Continuous (@id X).
+Proof. firstorder. Qed.
+Instance id_cocontinuous `{Proset X} : Cocontinuous (@id X).
+Proof. firstorder. Qed.
+Instance compose_preserves_inf `{Proset X, Proset Y, Proset Z'} {F : Y -> Z'} {G : X -> Y}
+         {R} {J : R -> X}
+         `{!Monotone F, !Monotone G, !PreservesInf G J, !PreservesInf F (G ∘ J)}
+  : PreservesInf (F ∘ G) J | 0.
+Proof. firstorder. Qed.
+Instance compose_preserves_sup `{Proset X, Proset Y, Proset Z'} {F : Y -> Z'} {G : X -> Y}
+         {R} {J : R -> X}
+         `{!Monotone F, !Monotone G, !PreservesSup G J, !PreservesSup F (G ∘ J)}
+  : PreservesSup (F ∘ G) J | 0.
+Proof. firstorder. Qed.
+
+(*
+Instance compose_continuous `{Proset X, Proset Y, Proset Z'} {F : Y -> Z'} {G : X -> Y}
+         `{!Monotone F, !Monotone G, !Continuous F, !Continuous G}
+  : Continuous (F ∘ G) | 0.
+Proof. typeclasses eauto. Qed.
+*)
+Instance subst_continuous1 {Y Y'} `{Complete X} {f : Y' -> Y}
+  : Continuous (fun g : Y -> X => g ∘ f).
+Proof. by apply/distrib_inf_sufficient. Qed.
+Instance subst_cocontinuous1 {Y Y'} `{Complete X} {f : Y' -> Y}
+  : Cocontinuous (fun g : Y -> X => g ∘ f).
+Proof. by apply/distrib_sup_sufficient. Qed.
+Instance eval_at_continuous {X} `{Complete Y} {x : X} : Continuous (eval_at (Y:=Y) x).
+Proof. by apply/distrib_inf_sufficient. Qed.
+Instance eval_at_cocontinuous {X} `{Complete Y} {x : X}
+  : Cocontinuous (eval_at (Y:=Y) x).
+Proof. by apply/distrib_sup_sufficient. Qed.
 
 Lemma reflecting_reflects_inf `{Proset X, Proset Y} {F : X -> Y}
       `{!Monotone F, !Reflecting F} {R} (J : R -> X) A
@@ -670,4 +670,95 @@ Lemma distrib_embed_prop `{Complete X, Complete Y} {F : X -> Y}
 Proof.
   rewrite distrib_sup; apply/(mono_core esup)/pw_core' => H_P /=.
   apply/distrib_top.
+Qed.
+
+Program Instance Hom_inf `{Proset X, Proset Y} {R} {J : R -> Hom X Y}
+        `{!forall x, HasInf (flip J x)}
+  : HasInf J
+  := {| inf := inf (ap_Hom ∘ J) ↾ _ |}.
+Next Obligation.
+  move=> X ? Y ? R J ? A B D /=.
+  apply/inf_right => r; apply/(inf_left r) => /=; by apply: Hom_mono.
+Qed.
+Next Obligation.
+  move=> X ? Y ? R J ? /=; split=> [r | A' LB] A /=.
+  - apply: (inf_lb r).
+  - apply: inf_right => r; apply: LB.
+Qed.
+Program Instance Hom_sup `{Proset X, Proset Y} {R} {J : R -> Hom X Y}
+        `{!forall x, HasSup (flip J x)}
+  : HasSup J
+  := {| sup := sup (ap_Hom ∘ J) ↾ _ |}.
+Next Obligation.
+  move=> X ? Y ? R J ? A B D /=.
+  apply/sup_left => r; apply/(sup_right r) => /=; by apply: Hom_mono.
+Qed.
+Next Obligation.
+  move=> X ? Y ? R J ? /=; split=> [r | A' UB] A /=.
+  - apply: (sup_ub r).
+  - apply: sup_left => r; apply: UB.
+Qed.
+(* TODO Make some of the subsequent stuff more fine-grained. *)
+Instance ap_Hom_complete_continuous `{Proset X, Complete Y}
+  : Continuous (ap_Hom (X:=X) (Y:=Y)).
+Proof. by apply/distrib_inf_sufficient. Qed.
+Instance ap_Hom_complete_cocontinuous `{Proset X, Complete Y}
+  : Cocontinuous (ap_Hom (X:=X) (Y:=Y)).
+Proof. by apply/distrib_sup_sufficient. Qed.
+(* Hmm. *)
+Instance flip_functoriality {R} `{Proset Y, Proset X}
+         {F : R -> Y -> X} `{!forall r, Monotone (F r)}
+  : Monotone (flip F).
+Proof. firstorder. Qed.
+Lemma Hom_lim : forall `{Proset Y, Complete X} {R} (J : R -> Hom Y X),
+    inf J ⟛ in_Hom (einf ∘ flip J).
+Proof. by compute. Qed.
+Lemma Hom_colim : forall `{Proset Y, Complete X} {R} (J : R -> Hom Y X),
+    inf J ⟛ in_Hom (einf ∘ flip J).
+Proof. by compute. Qed.
+Instance Hom_compose_continuous `{Proset X, Proset X', Complete Y} {F : Hom X' X}
+  : Continuous (fun G : Hom X Y => G ○ F).
+Proof.
+  apply: distrib_inf_sufficient.
+  - move=> G G'; apply: bi_l.
+  - move=> R J A /=; apply/(mono einf) => ? //=.
+Qed.
+Instance Hom_compose_cocontinuous `{Proset X, Proset X', Complete Y} {F : Hom X' X}
+  : Cocontinuous (fun G : Hom X Y => G ○ F).
+Proof.
+  apply: distrib_sup_sufficient.
+  - move=> G G'; apply: bi_l.
+  - move=> R J A /=; apply/(mono esup) => ? //=.
+Qed.
+Instance Hom_eval_at_continuous `{Proset X, Complete Y} {x : X}
+  : Continuous (Hom_eval_at (Y:=Y) x).
+Proof. by apply/distrib_inf_sufficient. Qed.
+Instance Hom_eval_at_cocontinuous `{Proset X, Complete Y} {x : X}
+  : Cocontinuous (Hom_eval_at (Y:=Y) x).
+Proof. by apply/distrib_sup_sufficient. Qed.
+
+
+(* Example *)
+Definition fixed_point `{Proset X} (F : X -> X) (A : X) : Prop
+  := F A ⟛ A.
+Definition kleene_chain `{Proset X, !Bot X} (F : X -> X) : nat -> X
+  := fun n => Nat.iter n F ⊥.
+Lemma kleene_chain_chain `{Proset X, !Bot X} {F : X -> X} `{!Monotone F}
+  : chain (kleene_chain F).
+Proof. elim=> /= [| n]; [apply/bot_left | apply/mono]. Qed.
+Instance kleene_chain_mono `{Proset X, !Bot X} {F : X -> X} `{!Monotone F}
+  : Monotone (kleene_chain F).
+Proof. apply/chain_mono/kleene_chain_chain. Qed.
+Theorem kleene `{Proset X, !DirectedComplete X, !Bot X} {F : X -> X}
+        `{!Monotone F, !ScottContinuous F}
+  : least (fixed_point F) (sup (kleene_chain F)).
+Proof.
+  split.
+  - rewrite /fixed_point distrib_sup; split; apply/sup_left => n.
+    + by apply/(sup_right (S n)).
+    + apply/(sup_right n)/kleene_chain_chain.
+  - move=> A FP; apply/sup_left; elim=> /= [| n].
+    + apply/bot_left.
+    + move=> D; unfold fixed_point in FP.
+      setoid_rewrite <- (proj1 FP); by apply/mono.
 Qed.
