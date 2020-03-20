@@ -590,7 +590,7 @@ Lemma distrib_sup_sufficient `{Complete X, Complete Y} {F : X -> Y} `{!Monotone 
   : (forall {R} (J : R -> X), F (sup J) ⊢ sup (F ∘ J)) -> Cocontinuous F.
 Proof. move=> Distr R J; apply/preserves_sup_alt2; split; [apply/Distr | apply/F_sup]. Qed.
 
-(* A number of continuity results are over in adjunctions.v, because they drop out
+(* A number of continuity results are over in adjunction.v, because they drop out
    for free from adjunctions that we were proving anyway. *)
 Instance id_continuous `{Proset X} : Continuous (@id X).
 Proof. firstorder. Qed.
