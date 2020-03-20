@@ -1,6 +1,8 @@
 .*.swp
 *.glob
 *.vo
+*.vok
+*.vos
 .*.aux
 *~
 \#*\#
