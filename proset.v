@@ -1,6 +1,5 @@
 From Coq Require Import ssreflect ssrfun ssrbool.
 Require Import stdpp.tactics.
-Require Import stdpp.finite.
 Require Import stdpp.list.
 (* This brings Z into scope, which I tend to use as a variable name sometimes,
    so this dummy definition will prevent me from accidentally using that Z when I thought
@@ -88,7 +87,10 @@ Proof. firstorder. Qed.
 
 Instance monotone_extensional `{Proset X, Proset Y} {F : X -> Y} `{!Monotone F}
   : Extensional F.
-Proof. move=> ? ? [? ?]; split; by apply mono. Qed.
+Proof. move=> ? ? [? ?]; split; by apply: mono. Qed.
+Instance antitone_extensional `{Proset X, Proset Y} {F : X -> Y} `{!Antitone F}
+  : Extensional F.
+Proof. move=> ? ? [? ?]; split; by apply: anti. Qed.
 Instance extensional_flipped `{Proset X, Proset Y} {F : X -> Y} `{!Extensional F}
   : Proper ((⟛) --> (⟛)) F.
 Proof. move=> ? ? [? ?]; split; by apply ext. Qed.
@@ -236,6 +238,16 @@ Proof.
     + by setoid_rewrite D.
     + by setoid_rewrite <- D.
 Qed.
+Lemma pw_harpoon' `{Proset X, Proset Y} {F G : X -> Y}
+  : F ⥊ G <-> [/\ Extensional F, Extensional G & F ⟛ G].
+Proof.
+  split.
+  - move=> P; split.
+    + move=> A B E; setoid_rewrite (P _ _ E); symmetry; by apply: P.
+    + move=> A B E; setoid_rewrite <- (P _ _ E); symmetry; by apply: P.
+    + split=> A; by apply (P A A).
+  - move=> [? ? E] A B E'; setoid_rewrite E; by setoid_rewrite E'.
+Qed.
 Instance const_proper `{Proset X, Proset Y} : Bimonotone (@const Y X).
 Proof. firstorder. Qed.
 Instance const_mono {X} `{Proset Y} : Monotone (@const Y X).
@@ -255,10 +267,6 @@ Proof. firstorder. Qed.
 Definition sig_rel {X} (R : X -> X -> Prop) (P : X -> Prop) : sig P -> sig P -> Prop :=
   fun s1 s2 => R (`s1) (`s2).
 Arguments sig_rel {_} _ _ !_ !_ /.
-(*
-Instance derives_pro `{NatDed X} : PreOrder (derives (A:=X))
-  := {| PreOrder_Reflexive := derives_refl; PreOrder_Transitive := derives_trans |}.
-*)
 Instance sig_reflexive `{Reflexive X R} {P} : Reflexive (sig_rel R P).
 Proof. by compute. Qed.
 Instance sig_transitive `{Transitive X R} {P} : Transitive (sig_rel R P).
