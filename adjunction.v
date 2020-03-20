@@ -145,11 +145,25 @@ Proof.
     apply/Uni => -[B0 ?] //.
 Qed.
 
+Instance id_id_adjoint `{Proset X} : (@id X) ⊣ id.
+Proof. done. Qed.
 Instance compose_adjoint `{Proset X, Proset Y, Proset Z'}
          {F : Y -> Z'} {G : Z' -> Y} {F' : X -> Y} {G' : Y -> X}
          `{!F ⊣ G, !F' ⊣ G', !Monotone F, !Monotone G, !Monotone F', !Monotone G'}
   : F ∘ F' ⊣ G' ∘ G.
 Proof. apply/transpose_sufficient => * /=; rewrite 2!transpose //. Qed.
+Instance pair0_snd_adjoint `{Proset X, Proset Y, !Bot X}
+  : pair ⊥ ⊣ (@snd X Y).
+Proof. constructor=> [B | [A B]] //=; by split; first apply: bot_left. Qed.
+Instance snd_pair1_adjoint `{Proset X, Proset Y, !Top X}
+  : (@snd X Y) ⊣ pair ⊤.
+Proof. constructor=> [[A B] | B] //=; by split; first apply: top_right. Qed.
+Instance flip_pair0_fst_adjoint `{Proset X, Proset Y, !Bot Y}
+  : flip pair ⊥ ⊣ (@fst X Y).
+Proof. constructor=> [B | [A B]] //=; by split; last apply: bot_left. Qed.
+Instance fst_flip_pair1_adjoint `{Proset X, Proset Y, !Top Y}
+  : (@fst X Y) ⊣ flip pair ⊤.
+Proof. constructor=> [[A B] | B] //=; by split; last apply: top_right. Qed.
 Instance const_einf_adjoint `{Proset X, !InfLattice X} {R} : @const X R ⊣ einf.
 Proof. apply/transpose_sufficient => A B; rewrite -inf_universal //. Qed.
 Instance esup_const_adjoint `{Proset X, !SupLattice X} {R} : esup ⊣ @const X R.
