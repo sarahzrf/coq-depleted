@@ -132,10 +132,24 @@ Proof. firstorder. Qed.
 Lemma reflect_core `{Proset X, Proset Y} (F : X -> Y) `{!Reflecting F} {A B}
   : F A ⟛ F B -> A ⟛ B.
 Proof. firstorder. Qed.
-(*
-Instance monotone_proper' `{Monotone X Y F} : Proper ((⊢) --> flip (⊢)) F.
-Proof. move=> ? ?; apply: mono. Qed.
-*)
+(* TODO Why arent't these automatic?! *)
+Instance monotone_proper' `{Proset X, Proset Y} {F : X -> Y} `{!Monotone F}
+  : Proper ((⊢) --> flip (⊢)) F.
+Proof. firstorder. Qed.
+Instance antitone_proper' `{Proset X, Proset Y} {F : X -> Y} `{!Antitone F}
+  : Proper ((⊢) ++> flip (⊢)) F.
+Proof. firstorder. Qed.
+Instance extensional_proper' `{Proset X, Proset Y} {F : X -> Y} `{!Extensional F}
+  : Proper ((⟛) ==> flip (⟛)) F.
+Proof. firstorder. Qed.
+Instance bimonotone_proper' `{Proset X, Proset Y, Proset Z'} {F : X -> Y -> Z'}
+         `{!Bimonotone F}
+  : Proper ((⊢) --> (⊢) --> flip (⊢)) F.
+Proof. move=> ? ? ? ? ? ? /=; firstorder. Qed.
+Instance dimonotone_proper' `{Proset X, Proset Y, Proset Z'} {F : X -> Y -> Z'}
+         `{!Dimonotone F}
+  : Proper ((⊢) ++> (⊢) --> flip (⊢)) F.
+Proof. move=> ? ? ? ? ? ? /=; firstorder. Qed.
 
 (* Basic kinds of proset. *)
 Definition core (X : Type) : Type := X.
@@ -366,7 +380,7 @@ Definition Hom_compose `{Proset X, Proset Y, Proset Z'}
            (F : Hom Y Z') (G : Hom X Y) : Hom X Z' := in_Hom (F ∘ G).
 Infix "○" := Hom_compose (at level 40) : proset_scope.
 Notation "( f ○.)" := (Hom_compose f) (only parsing) : proset_scope.
-Notation "(.○ f )" := (fun g => Hom_compose g f) (only parsing) : proset_scope.
+Notation "(.○ f )" := (flip Hom_compose f) (only parsing) : proset_scope.
 Instance Hom_compose_bi `{Proset X, Proset Y, Proset Z'}
   : Bimonotone (Hom_compose (X:=X) (Y:=Y) (Z':=Z')).
 Proof. move=> f g /= D f' g' D' x /=; setoid_rewrite D; by setoid_rewrite D'. Qed.

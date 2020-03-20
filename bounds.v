@@ -12,7 +12,7 @@ Definition lower_bound `{Proset X} {R} (J : R -> X) (A : X) : Prop
 Definition upper_bound `{Proset X} {R} (J : R -> X) (A : X) : Prop
   := forall r, J r ⊢ A.
 Instance lower_bound_proper `{Proset X} {R}
-  : Proper ((⊢) ++> (⊢) --> impl) (lower_bound (X:=X) (R:=R)).
+  : Proper ((⊢) ++> (↼)) (lower_bound (X:=X) (R:=R)).
 Proof.
   move=> J1 J2 D_J A1 A2 D_A L r.
   setoid_rewrite <- D_A; by setoid_rewrite <- (D_J r).
@@ -20,7 +20,7 @@ Qed.
 Instance lower_bound_ext `{Proset X} {R} {J : R -> X} : Extensional (lower_bound J).
 Proof. typeclasses eauto. Qed.
 Instance upper_bound_proper `{Proset X} {R}
-  : Proper ((⊢) --> (⊢) ++> impl) (upper_bound (X:=X) (R:=R)).
+  : Proper ((⊢) --> (⇀)) (upper_bound (X:=X) (R:=R)).
 Proof.
   move=> J1 J2 D_J A1 A2 D_A U r.
   setoid_rewrite <- D_A; by setoid_rewrite (D_J r).
@@ -31,7 +31,7 @@ Instance lower_bound_proper' `{Proset X} {R}
   : Proper ((⊢) --> (⊢) ++> flip impl) (lower_bound (X:=X) (R:=R)).
 Proof. move=> ? ? ? ? ? ?; by apply: lower_bound_proper. Qed.
 Instance lower_bound_proper'' `{Proset X} {R}
-  : Proper ((⟛) ==> (⟛) ==> iff) (lower_bound (X:=X) (R:=R)).
+  : Proper ((⟛) ==> (⥊)) (lower_bound (X:=X) (R:=R)).
 Proof.
   apply: proper_sym_impl_iff_2 => ? ? [D ?] ? ? [D' ?] ?.
     by apply: lower_bound_proper.
@@ -40,7 +40,7 @@ Instance upper_bound_proper' `{Proset X} {R}
   : Proper ((⊢) ++> (⊢) --> flip impl) (upper_bound (X:=X) (R:=R)).
 Proof. move=> ? ? ? ? ? ?; by apply: upper_bound_proper. Qed.
 Instance upper_bound_proper'' `{Proset X} {R}
-  : Proper ((⟛) ==> (⟛) ==> iff) (upper_bound (X:=X) (R:=R)).
+  : Proper ((⟛) ==> (⥊)) (upper_bound (X:=X) (R:=R)).
 Proof.
   apply: proper_sym_impl_iff_2 => ? ? [D ?] ? ? [D' ?] ?.
     by apply: upper_bound_proper.
@@ -51,22 +51,22 @@ Definition pred_lower_bound `{Proset X} (P : X -> Prop) (A : X) : Prop
 Definition pred_upper_bound `{Proset X} (P : X -> Prop) (A : X) : Prop
   := forall B, P B -> B ⊢ A.
 Instance pred_lower_bound_proper `{Proset X}
-  : Proper ((⊢) --> (⊢) --> impl) (pred_lower_bound (X:=X)).
+  : Proper ((⊢) --> (↼)) (pred_lower_bound (X:=X)).
 Proof.
   move=> P1 P2 D_P A1 A2 D_A L B /D_P.
   setoid_rewrite <- D_A; apply: L.
 Qed.
 Instance pred_upper_bound_proper `{Proset X}
-  : Proper ((⊢) --> (⊢) ++> impl) (pred_upper_bound (X:=X)).
+  : Proper ((⊢) --> (⇀)) (pred_upper_bound (X:=X)).
 Proof.
-  move=> P1 P2 D_P A1 A2 D_A U B /D_P.
-  setoid_rewrite <- D_A; apply: U.
+  move=> P1 P2 D_P A1 A2 D_A U B /D_P ?.
+  setoid_rewrite <- D_A; by apply: U.
 Qed.
 Instance pred_lower_bound_proper' `{Proset X}
   : Proper ((⊢) ++> (⊢) ++> flip impl) (pred_lower_bound (X:=X)).
 Proof. move=> ? ? ? ? ? ?; by apply: pred_lower_bound_proper. Qed.
 Instance pred_lower_bound_proper'' `{Proset X}
-  : Proper ((⟛) ==> (⟛) ==> iff) (pred_lower_bound (X:=X)).
+  : Proper ((⟛) ==> (⥊)) (pred_lower_bound (X:=X)).
 Proof.
   apply: proper_sym_impl_iff_2 => ? ? [D ?] ? ? [D' ?] ?.
     by apply: pred_lower_bound_proper.
@@ -75,7 +75,7 @@ Instance pred_upper_bound_proper' `{Proset X}
   : Proper ((⊢) ++> (⊢) --> flip impl) (pred_upper_bound (X:=X)).
 Proof. move=> ? ? ? ? ? ?; by apply: pred_upper_bound_proper. Qed.
 Instance pred_upper_bound_proper'' `{Proset X}
-  : Proper ((⟛) ==> (⟛) ==> iff) (pred_upper_bound (X:=X)).
+  : Proper ((⟛) ==> (⥊)) (pred_upper_bound (X:=X)).
 Proof.
   apply: proper_sym_impl_iff_2 => ? ? [D ?] ? ? [D' ?] ?.
     by apply: pred_upper_bound_proper.
@@ -103,10 +103,11 @@ Definition image `{Proset X} {R} (J : R -> X) : X -> Prop
   := fun A => exists r, J r ⟛ A.
 Arguments image {_ _ _} _ _ /.
 Instance image_proper `{Proset X} {R}
-  : Proper ((⟛) ==> (⟛) ==> iff) (image (X:=X) (R:=R)).
+  : Proper ((⟛) ==> (⥊)) (image (X:=X) (R:=R)).
 Proof.
-  move=> J J' E_J A A' E_A /=; setoid_rewrite E_J.
-  split=> -[r ?]; exists r; [rewrite -E_A // | rewrite E_A //].
+  apply: proper_sym_impl_iff_2.
+  move=> J J' E_J A A' E_A /= [r] E; exists r.
+  rewrite -E_J -E_A //.
 Qed.
 Lemma lb_pred_lb `{Proset X} {R} (J : R -> X) (A : X)
   : lower_bound J A <-> pred_lower_bound (image J) A.
@@ -129,7 +130,8 @@ Definition greatest `{Proset X} (P : X -> Prop) (A : X) : Prop
   := P A /\ pred_upper_bound P A.
 Arguments least {_ _} _ _ /.
 Arguments greatest {_ _} _ _ /.
-Instance least_proper `{Proset X} : Proper ((⥊) ==> (⟛) ==> iff) (least (X:=X)).
+Instance least_proper `{Proset X}
+  : Proper ((⥊) ==> (⟛) ==> iff) (least (X:=X)).
 Proof.
   apply: proper_sym_impl_iff_2.
   - firstorder.
@@ -588,6 +590,8 @@ Lemma distrib_sup_sufficient `{Complete X, Complete Y} {F : X -> Y} `{!Monotone 
   : (forall {R} (J : R -> X), F (sup J) ⊢ sup (F ∘ J)) -> Cocontinuous F.
 Proof. move=> Distr R J; apply/preserves_sup_alt2; split; [apply/Distr | apply/F_sup]. Qed.
 
+(* A number of continuity results are over in adjunctions.v, because they drop out
+   for free from adjunctions that we were proving anyway. *)
 Instance id_continuous `{Proset X} : Continuous (@id X).
 Proof. firstorder. Qed.
 Instance id_cocontinuous `{Proset X} : Cocontinuous (@id X).
