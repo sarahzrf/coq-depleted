@@ -1,0 +1,20 @@
+opam-version: "2.0"
+name: "coq-depleted"
+version: "~dev"
+synopsis: "A Coq library of depleted category theory"
+maintainer: "sarahzrf"
+authors: "sarahzrf"
+# license: ""
+# homepage: ""
+# bug-reports: ""
+# dev-repo: ""
+
+depends: [
+  "ocaml"         { = "4.09.0"                    }
+  "coq"           { = "8.11.0"                    }
+  "dune"          { = "2.3.0"                     }
+  "coq-stdpp"     { = "dev.2020-02-24.1.7d705c84" }
+]
+
+build: ["dune" "build" "-p" name "-j" jobs]
+

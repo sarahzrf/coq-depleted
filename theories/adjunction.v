@@ -1,8 +1,8 @@
 From Coq Require Import ssreflect ssrfun ssrbool.
 Require Import stdpp.tactics.
 
-Require Import proset.
-Require Import bounds.
+Require Import depleted.proset.
+Require Import depleted.bounds.
 Local Open Scope proset_scope.
 Local Open Scope proset_util_scope.
 
