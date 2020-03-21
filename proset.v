@@ -123,14 +123,17 @@ Class Reflecting `{Proset X, Proset Y} (F : X -> Y) :=
 Hint Mode Reflecting ! - ! - ! : typeclass_instances.
 *)
 
-Lemma embed `{Proset X, Proset Y} {F : X -> Y} `{!Monotone F, !Reflecting F} {A B}
+Lemma embed `{Proset X, Proset Y} (F : X -> Y) `{!Monotone F, !Reflecting F} {A B}
   : F A ⊢ F B <-> A ⊢ B.
-Proof. split; [apply: reflect | apply: mono]. Qed.
+Proof. firstorder. Qed.
 Lemma mono_core `{Proset X, Proset Y} (F : X -> Y) `{!Monotone F} {A B}
   : A ⟛ B -> F A ⟛ F B.
 Proof. firstorder. Qed.
 Lemma reflect_core `{Proset X, Proset Y} (F : X -> Y) `{!Reflecting F} {A B}
   : F A ⟛ F B -> A ⟛ B.
+Proof. firstorder. Qed.
+Lemma embed_core `{Proset X, Proset Y} (F : X -> Y) `{!Monotone F, !Reflecting F} {A B}
+  : F A ⟛ F B <-> A ⟛ B.
 Proof. firstorder. Qed.
 (* TODO Why arent't these automatic?! *)
 Instance monotone_proper' `{Proset X, Proset Y} {F : X -> Y} `{!Monotone F}
