@@ -15,19 +15,22 @@ Class Monoidal `{Proset X} (T : X -> X -> X) `{!Bimonotone T} (U : X) :=
   {lunit A : T U A ⟛ A;
    runit A : T A U ⟛ A;
    massoc A B C : T A (T B C) ⟛ T (T A B) C}.
-Hint Mode Monoidal ! - ! - - : typeclass_instances.
+Hint Mode Monoidal ! - - ! - - : typeclass_instances.
 Class Sym `{Proset X} (T : X -> X -> X) :=
   twist A B : T A B ⊢ T B A.
-Hint Mode Sym ! - ! : typeclass_instances.
+Hint Mode Sym ! - - ! : typeclass_instances.
 Definition sym `{Sym X T} (A B : X) : T A B ⟛ T B A :=
   conj (twist A B) (twist B A).
 
 Class MonSet (X : Type) `{Proset X} :=
   {memp : X;
    pro_tens : X -> X -> X;
-   pro_tens_bi :> Bimonotone pro_tens; pro_monoidal :> Monoidal pro_tens memp}.
-Arguments pro_tens {_ _ _} !_ !_ /.
-Hint Mode MonSet ! - : typeclass_instances.
+   pro_tens_bi :> Bimonotone pro_tens;
+   pro_monoidal :> Monoidal pro_tens memp}. (* ugh, unfortunate name *)
+Hint Mode MonSet ! - - : typeclass_instances.
+Arguments pro_tens {_ _ _ _} !_ !_ /.
+Instance: Params (@memp) 4 := {}.
+Instance: Params (@pro_tens) 4 := {}.
 Infix "⊗" := pro_tens (at level 30) : proset_scope.
 Notation "(⊗)" := pro_tens (only parsing) : proset_scope.
 Definition pro_lunit `{MonSet X} (A : X) : memp ⊗ A ⟛ A := lunit A.
@@ -36,19 +39,19 @@ Definition pro_massoc `{MonSet X} (A B C : X) : A ⊗ (B ⊗ C) ⟛ (A ⊗ B) �
   := massoc A B C.
 Class SymMonSet (X : Type) `{MonSet X} :=
   {pro_twist :> Sym (X:=X) (⊗)}.
-Hint Mode SymMonSet ! - - : typeclass_instances.
+Hint Mode SymMonSet ! - - - : typeclass_instances.
 Definition pro_sym `{SymMonSet X} (A B : X) : A ⊗ B ⟛ B ⊗ A := sym A B.
 
 Class LaxMon `{MonSet X, MonSet Y} (F : X -> Y) :=
   {pres_memp : memp ⊢ F memp; pres_tens A B : F A ⊗ F B ⊢ F (A ⊗ B)}.
-Hint Mode LaxMon ! - - ! - - ! : typeclass_instances.
+Hint Mode LaxMon ! - - - ! - - - ! : typeclass_instances.
 Class OplaxMon `{MonSet X, MonSet Y} (F : X -> Y) :=
   {pres_memp_op : F memp ⊢ memp; pres_tens_op A B : F (A ⊗ B) ⊢ F A ⊗ F B}.
-Hint Mode OplaxMon ! - - ! - - ! : typeclass_instances.
+Hint Mode OplaxMon ! - - - ! - - - ! : typeclass_instances.
 (* This definition is OK, since we are in prosets---I think??? *)
 Class StrongMon `{MonSet X, MonSet Y} (F : X -> Y) :=
   {strong_lax :> LaxMon F; strong_oplax :> OplaxMon F}.
-Hint Mode StrongMon ! - - ! - - ! : typeclass_instances.
+Hint Mode StrongMon ! - - - ! - - - ! : typeclass_instances.
 
 
 Instance cartesian_monoidal `{Proset X, !MeetSemilattice X}
@@ -56,41 +59,41 @@ Instance cartesian_monoidal `{Proset X, !MeetSemilattice X}
 Proof.
   constructor.
   - move=> A; split.
-    + apply/meet_proj2.
-    + apply/meet_right; [apply/top_right | done].
+    + apply: meet_proj2.
+    + apply: meet_right; [apply: top_right | done].
   - move=> A; split.
-    + apply/meet_proj1.
-    + apply/meet_right; [done | apply/top_right].
-  - split; repeat apply/meet_right.
-    + apply/meet_proj1.
-    + apply/meet_left2/meet_proj1.
-    + apply/meet_left2/meet_proj2.
-    + apply/meet_left1/meet_proj1.
-    + apply/meet_left1/meet_proj2.
-    + apply/meet_proj2.
+    + apply: meet_proj1.
+    + apply: meet_right; [done | apply: top_right].
+  - split; repeat apply: meet_right.
+    + apply: meet_proj1.
+    + apply: meet_left2; apply: meet_proj1.
+    + apply: meet_left2; apply: meet_proj2.
+    + apply: meet_left1; apply: meet_proj1.
+    + apply: meet_left1; apply: meet_proj2.
+    + apply: meet_proj2.
 Qed.
 Instance cocartesian_monoidal `{Proset X, !JoinSemilattice X}
   : Monoidal (X:=X) join ⊥.
 Proof.
   constructor.
   - move=> A; split.
-    + apply/join_left; [apply/bot_left | done].
-    + apply/join_inj2.
+    + apply: join_left; [apply: bot_left | done].
+    + apply: join_inj2.
   - move=> A; split.
-    + apply/join_left; [done | apply/bot_left].
-    + apply/join_inj1.
-  - split; repeat apply/join_left.
-    + apply/join_right1/join_inj1.
-    + apply/join_right1/join_inj2.
-    + apply/join_inj2.
-    + apply/join_inj1.
-    + apply/join_right2/join_inj1.
-    + apply/join_right2/join_inj2.
+    + apply: join_left; [done | apply: bot_left].
+    + apply: join_inj1.
+  - split; repeat apply: join_left.
+    + apply: join_right1; apply: join_inj1.
+    + apply: join_right1; apply: join_inj2.
+    + apply: join_inj2.
+    + apply: join_inj1.
+    + apply: join_right2; apply: join_inj1.
+    + apply: join_right2; apply: join_inj2.
 Qed.
 Instance cartesian_sym `{Proset X, !BinMeets X} : Sym (X:=X) meet.
-Proof. move=> A B; apply/(meet_right meet_proj2 meet_proj1). Qed.
+Proof. move=> A B; apply: (meet_right meet_proj2 meet_proj1). Qed.
 Instance cocartesian_sym `{Proset X, !BinJoins X} : Sym (X:=X) join.
-Proof. move=> A B; apply/(join_left join_inj2 join_inj1). Qed.
+Proof. move=> A B; apply: (join_left join_inj2 join_inj1). Qed.
 
 Instance id_strongmon `{MonSet X} : StrongMon (@id X).
 Proof. firstorder. Qed.
@@ -99,16 +102,16 @@ Instance compose_laxmon `{MonSet X, MonSet Y, MonSet Z'}
   : LaxMon (F ∘ G).
 Proof.
   constructor=> [| A B] /=.
-  - setoid_rewrite <- pres_memp; apply: pres_memp.
-  - setoid_rewrite <- pres_tens; apply: pres_tens.
+  - rewrite -!pres_memp //.
+  - rewrite -!pres_tens //.
 Qed.
 Instance compose_oplaxmon `{MonSet X, MonSet Y, MonSet Z'}
          {F : Y -> Z'} {G : X -> Y} `{!Monotone F, !Monotone G, !OplaxMon F, !OplaxMon G}
   : OplaxMon (F ∘ G).
 Proof.
   constructor=> [| A B] /=.
-  - setoid_rewrite pres_memp_op; apply: pres_memp_op.
-  - setoid_rewrite pres_tens_op; apply: pres_tens_op.
+  - rewrite !pres_memp_op //.
+  - rewrite !pres_tens_op //.
 Qed.
 Instance compose_strongmon `{MonSet X, MonSet Y, MonSet Z'}
          {F : Y -> Z'} {G : X -> Y} `{!Monotone F, !Monotone G, !StrongMon F, !StrongMon G}
@@ -118,11 +121,12 @@ Proof. constructor; typeclasses eauto. Qed.
 Definition op_tens {X} (T : X -> X -> X) (a1 a2 : op X) : op X :=
   Op (T (get_op a1) (get_op a2)).
 Arguments op_tens {X} T a1 a2 /.
+Instance: Params (@op_tens) 2 := {}.
 Instance op_tens_bi `{Proset X} {T : X -> X -> X} `{!Bimonotone T}
   : Bimonotone (op_tens T).
 Proof.
   move=> A A' /op_def D_A B B' /op_def D_B /=.
-  apply/op_def/bi; by apply/op_def.
+  apply/op_def; by apply: bi.
 Qed.
 Instance op_tens_monoidal `{Monoidal X T U} : Monoidal (op_tens T) (Op U).
 Proof.
@@ -139,6 +143,7 @@ Instance op_smset `{SymMonSet X} : SymMonSet (op X) := {}.
 Definition pw_tens (X : Type) {Y} (T : Y -> Y -> Y) (f1 f2 : X -> Y) : X -> Y :=
   fun x => T (f1 x) (f2 x).
 Arguments pw_tens _ {_} _ _ _ _ /.
+Instance: Params (@pw_tens) 3 := {}.
 Instance pw_tens_bi {X} `{Proset Y} {T : Y -> Y -> Y} `{!Bimonotone T}
   : Bimonotone (pw_tens X T).
 Proof. move=> ? ? ? ? ? ? ? /=; firstorder. Qed.
@@ -169,18 +174,19 @@ Instance inf_laxmon {R} `{MonSet X, !DInfsOfShape R X} : LaxMon (X:=R -> X) einf
 Proof.
   constructor=> [| A B].
   - apply: inf_right => A //.
-  - apply: inf_right => r; apply: bi; apply/inf_lb.
+  - apply: inf_right => r; apply: bi; apply: inf_lb.
 Qed.
 Instance sup_oplaxmon {R} `{MonSet X, !DSupsOfShape R X} : OplaxMon (X:=R -> X) esup.
 Proof.
   constructor=> [| A B].
   - apply: sup_left => A //.
-  - apply: sup_left => r; apply: pro_tens_bi; apply/sup_ub.
+  - apply: sup_left => r; apply: pro_tens_bi; apply: sup_ub.
 Qed.
 
 Definition prod_tens {X Y} (T : X -> X -> X) (T' : Y -> Y -> Y) (p1 p2 : X * Y) : X * Y :=
   (T p1.1 p2.1, T' p1.2 p2.2).
 Arguments prod_tens {X Y} T T' !p1 !p2 /.
+Instance: Params (@prod_tens) 4 := {}.
 Instance prod_tens_bi `{Proset X, Proset Y} {T : X -> X -> X} {T' : Y -> Y -> Y}
          `{!Bimonotone T, !Bimonotone T'}
   : Bimonotone (prod_tens T T').
@@ -268,17 +274,18 @@ Instance list_map_strongmon `{Proset X, Proset Y} {F : X -> Y}
 Proof. constructor; constructor=> // As Bs; rewrite fmap_app //. Qed.
 Definition tens_all `{MonSet X} : list X -> X
   := foldr pro_tens memp.
+Instance: Params (@tens_all) 4 := {}.
 (*
 Instance tens_all_mono `{MonSet X} : Monotone (tens_all (X:=X)).
-Proof. move=> ? ?; elim=> //= A B As Bs D _ IH; setoid_rewrite D; by setoid_rewrite IH. Qed.
+Proof. move=> ? ?; elim=> //= A B As Bs D _ IH; rewrite D; by rewrite IH. Qed.
 *)
 Instance tens_all_strongmon `{MonSet X} : StrongMon (tens_all (X:=X)).
 Proof.
   constructor; constructor=> //; elim=> /= [| A As IH] Bs.
   - rewrite {2}/pro_tens /= pro_lunit //.
-  - rewrite -pro_massoc; by apply/bi/IH.
+  - rewrite -pro_massoc; by apply: bi; last apply/IH.
   - rewrite {1}/pro_tens /=; apply pro_lunit.
-  - setoid_rewrite <- (proj1 (pro_massoc _ _ _)); by apply/bi/IH.
+  - rewrite -(proj1 (pro_massoc _ _ _)); by apply: bi; last apply/IH.
 Qed.
 Fixpoint tens_all' `{MonSet X} (l : list X) : X :=
   match l with
@@ -286,16 +293,17 @@ Fixpoint tens_all' `{MonSet X} (l : list X) : X :=
   | [A] => A
   | A :: As => A ⊗ tens_all' As
   end.
-Lemma tens_all'_alt : forall `{MonSet X} {l : list X},
-    tens_all' l ⟛ tens_all l.
+Instance: Params (@tens_all') 4 := {}.
+Lemma tens_all'_alt `{MonSet X}
+  : forall {l : list X}, tens_all' l ⟛ tens_all l.
 Proof.
-  move=> X ? ?; elim=> //= A [| A' As] /= IH.
+  elim=> //= A [| A' As] /= IH.
   - rewrite pro_runit //.
   - split; apply: bi; firstorder.
 Qed.
 Instance tens_all'_mono `{MonSet X} : Monotone (tens_all' (X:=X)).
 Proof.
-  move=> *; rewrite tens_all'_alt; setoid_rewrite <- (proj2 tens_all'_alt); apply/mono.
+  move=> *; rewrite tens_all'_alt; rewrite -(proj2 tens_all'_alt); apply: mono.
 Abort.
 (*
 Instance tens_all'_strongmon `{MonSet X} : StrongMon (tens_all' (X:=X)).
@@ -338,24 +346,25 @@ Proof. split=> ? //=; apply pro_runit. Qed.
 Class MonClosed `{MonSet X} (P : X -> Prop) :=
   {memp_closed : P memp;
    tensor_closed : forall {A B : X}, P A -> P B -> P (A ⊗ B)}.
-Hint Mode MonClosed ! - - ! : typeclass_instances.
+Hint Mode MonClosed ! - - - ! : typeclass_instances.
 Definition sig_tens `{MonSet X} (P : X -> Prop) `{!MonClosed P}
            (s1 s2 : sig P) : sig P
   := match s1, s2 with a1 ↾ H1, a2 ↾ H2 => (a1 ⊗ a2) ↾ tensor_closed H1 H2 end.
-Arguments sig_tens {_ _ _} P {_} !_ !_ /.
+Arguments sig_tens {_ _ _ _} P {_} !_ !_ /.
+Instance: Params (@sig_tens) 6 := {}.
 Instance sig_tens_bi `{MonClosed X P} : Bimonotone (sig_tens P).
 Proof. move=> [? ?] [? ?] /= ? [? ?] [? ?] /= ?; by apply: bi. Qed.
 Instance sig_tens_monoidal `{MonSet X} {P : X -> Prop} `{!MonClosed P} :
   Monoidal (sig_tens P) (memp ↾ memp_closed).
 Proof.
-  constructor=> [[? ?] | [? ?] | [? ?] [? ?] [? ?]] /=; apply/(reflect_core sval); simpl.
+  constructor=> [[? ?] | [? ?] | [? ?] [? ?] [? ?]] /=; apply: (reflect_core sval); simpl.
   - apply: lunit.
   - apply: runit.
   - apply: massoc.
 Qed.
 Instance sig_sym `{SymMonSet X} {P : X -> Prop} `{!MonClosed P} :
   Sym (sig_tens P).
-Proof. move=> [A H_A] [B H_B] /=; apply/twist. Qed.
+Proof. move=> [A H_A] [B H_B] /=; apply: twist. Qed.
 Instance sig_mset `{MonSet X} {P : X -> Prop} `{!MonClosed P} :
   MonSet (sig P) := {| pro_tens := sig_tens P |}.
 Instance sig_smset  `{SymMonSet X} {P : X -> Prop} `{!MonClosed P} :
@@ -391,32 +400,35 @@ Proof. firstorder. Qed.
 
 Class Closed `{Proset X} (T : X -> X -> X) (H : X -> X -> X) :=
   tensor_hom A B C : T A B ⊢ C <-> A ⊢ H B C.
-Hint Mode Closed ! - ! - : typeclass_instances.
-Hint Mode Closed ! - - ! : typeclass_instances.
+Hint Mode Closed ! - - ! - : typeclass_instances.
+Hint Mode Closed ! - - - ! : typeclass_instances.
 Class LClosed `{Proset X} (T : X -> X -> X) (H : X -> X -> X) :=
   l_tensor_hom A B C : T B A ⊢ C <-> A ⊢ H B C.
-Hint Mode LClosed ! - ! - : typeclass_instances.
-Hint Mode LClosed ! - - ! : typeclass_instances.
+Hint Mode LClosed ! - - ! - : typeclass_instances.
+Hint Mode LClosed ! - - - ! : typeclass_instances.
 Class ClosedMonSet (X : Type) `{MonSet X} :=
   {internal_hom : X -> X -> X;
    pro_tensor_hom :> Closed (⊗) internal_hom}.
-Hint Mode ClosedMonSet ! - - : typeclass_instances.
+Hint Mode ClosedMonSet ! - - - : typeclass_instances.
+Instance: Params (@internal_hom) 5 := {}.
 Infix "⊸" := internal_hom (at level 40) : proset_scope.
 Notation "(⊸)" := internal_hom (only parsing) : proset_scope.
 Class LClosedMonSet (X : Type) `{MonSet X} :=
   {l_internal_hom : X -> X -> X;
    pro_l_tensor_hom :> LClosed (⊗) l_internal_hom}.
-Hint Mode LClosedMonSet ! - - : typeclass_instances.
+Hint Mode LClosedMonSet ! - - - : typeclass_instances.
+Instance: Params (@l_internal_hom) 5 := {}.
 Infix "⊸̂" := l_internal_hom (at level 40) : proset_scope.
 Notation "(⊸̂)" := l_internal_hom (only parsing) : proset_scope.
-Class Exponents (X : Type) `{!Proset X, !BinMeets X} :=
+Class Exponents (X : Type) `{Proset X, !BinMeets X} :=
   {exponential : X -> X -> X;
    meet_exponential :> Closed meet exponential}.
-Hint Mode Exponents ! - - : typeclass_instances.
+Hint Mode Exponents ! - - - : typeclass_instances.
+Instance: Params (@exponential) 5 := {}.
 Infix "⟿" := exponential (at level 40) : proset_scope.
 Notation "(⟿)" := exponential (only parsing) : proset_scope.
 Instance sym_lclosed `{Sym X T, !Closed T H'} : LClosed T H' | 3.
-Proof. move=> A B C; rewrite -tensor_hom; split=> ?; by setoid_rewrite sym. Qed.
+Proof. move=> A B C; rewrite -tensor_hom; split=> ?; by rewrite sym. Qed.
 Instance sym_lcmset `{SymMonSet X, !ClosedMonSet X} : LClosedMonSet X | 3
   := {| l_internal_hom := internal_hom |}.
 
@@ -462,12 +474,12 @@ Lemma modus_ponens `{Exponents X} {A B : X}
 Proof. by rewrite meet_exponential. Qed.
 Lemma l_modus_ponens `{Exponents X} {A B : X}
   : A ⩕ (A ⟿ B) ⊢ B.
-Proof. setoid_rewrite (cartesian_sym A); rewrite meet_exponential //. Qed.
+Proof. rewrite (cartesian_sym A) meet_exponential //. Qed.
 Lemma prop_loop `{Complete X, !Exponents X} {P Q : X} {R : Prop}
   : (P ⊢ embed_prop R) -> (R -> P ⊢ Q) -> P ⊢ Q.
 Proof.
   move=> D1 D2.
-  setoid_rewrite (meet_right D1 (reflexivity _)).
-  apply/meet_exponential/embed_prop_left => ?.
-  apply/meet_exponential; setoid_rewrite meet_proj2; by apply: D2.
+  rewrite (meet_right D1 (reflexivity _)).
+  apply/meet_exponential; apply: embed_prop_left => ?.
+  apply/meet_exponential; rewrite meet_proj2; by apply: D2.
 Qed.

@@ -11,11 +11,13 @@ Definition lower_bound `{Proset X} {R} (J : R -> X) (A : X) : Prop
   := forall r, A ⊢ J r.
 Definition upper_bound `{Proset X} {R} (J : R -> X) (A : X) : Prop
   := forall r, J r ⊢ A.
+Instance: Params (@lower_bound) 4 := {}.
+Instance: Params (@upper_bound) 4 := {}.
 Instance lower_bound_proper `{Proset X} {R}
   : Proper ((⊢) ++> (↼)) (lower_bound (X:=X) (R:=R)).
 Proof.
-  move=> J1 J2 D_J A1 A2 D_A L r.
-  setoid_rewrite <- D_A; by setoid_rewrite <- (D_J r).
+  move=> J1 J2 D_J A1 A2 /= D_A L r.
+  rewrite D_A -(D_J r) //.
 Qed.
 Instance lower_bound_ext `{Proset X} {R} {J : R -> X} : Extensional (lower_bound J).
 Proof. typeclasses eauto. Qed.
@@ -23,7 +25,7 @@ Instance upper_bound_proper `{Proset X} {R}
   : Proper ((⊢) --> (⇀)) (upper_bound (X:=X) (R:=R)).
 Proof.
   move=> J1 J2 D_J A1 A2 D_A U r.
-  setoid_rewrite <- D_A; by setoid_rewrite (D_J r).
+  rewrite -D_A (D_J r) //.
 Qed.
 Instance upper_bound_ext `{Proset X} {R} {J : R -> X} : Extensional (upper_bound J).
 Proof. typeclasses eauto. Qed.
@@ -50,17 +52,19 @@ Definition pred_lower_bound `{Proset X} (P : X -> Prop) (A : X) : Prop
   := forall B, P B -> A ⊢ B.
 Definition pred_upper_bound `{Proset X} (P : X -> Prop) (A : X) : Prop
   := forall B, P B -> B ⊢ A.
+Instance: Params (@pred_lower_bound) 3 := {}.
+Instance: Params (@pred_upper_bound) 3 := {}.
 Instance pred_lower_bound_proper `{Proset X}
   : Proper ((⊢) --> (↼)) (pred_lower_bound (X:=X)).
 Proof.
-  move=> P1 P2 D_P A1 A2 D_A L B /D_P.
-  setoid_rewrite <- D_A; apply: L.
+  move=> P1 P2 D_P A1 A2 /= D_A L B /D_P.
+  rewrite D_A; apply: L.
 Qed.
 Instance pred_upper_bound_proper `{Proset X}
   : Proper ((⊢) --> (⇀)) (pred_upper_bound (X:=X)).
 Proof.
   move=> P1 P2 D_P A1 A2 D_A U B /D_P ?.
-  setoid_rewrite <- D_A; by apply: U.
+  rewrite -D_A; by apply: U.
 Qed.
 Instance pred_lower_bound_proper' `{Proset X}
   : Proper ((⊢) ++> (⊢) ++> flip impl) (pred_lower_bound (X:=X)).
@@ -83,7 +87,8 @@ Qed.
 
 Definition pred_diagram `{Proset X} (P : X -> Prop) : sig P -> X
   := sval.
-Arguments pred_diagram {_ _} _ /.
+Arguments pred_diagram {_ _ _} P /.
+Instance: Params (@pred_diagram) 3 := {}.
 Lemma pred_lb_lb `{Proset X} (P : X -> Prop) (A : X)
   : pred_lower_bound P A <-> lower_bound (pred_diagram P) A.
 Proof.
@@ -101,7 +106,8 @@ Qed.
 
 Definition image `{Proset X} {R} (J : R -> X) : X -> Prop
   := fun A => exists r, J r ⟛ A.
-Arguments image {_ _ _} _ _ /.
+Arguments image {_ _ _ _} J _ /.
+Instance: Params (@image) 4 := {}.
 Instance image_proper `{Proset X} {R}
   : Proper ((⟛) ==> (⥊)) (image (X:=X) (R:=R)).
 Proof.
@@ -113,14 +119,14 @@ Lemma lb_pred_lb `{Proset X} {R} (J : R -> X) (A : X)
   : lower_bound J A <-> pred_lower_bound (image J) A.
 Proof.
   split.
-  - move=> L B [r E]; by setoid_rewrite <- (proj1 E).
+  - move=> L B [r E]; rewrite -(proj1 E) //.
   - move=> L r; apply/L; by exists r.
 Qed.
 Lemma ub_pred_ub `{Proset X} {R} (J : R -> X) (A : X)
   : upper_bound J A <-> pred_upper_bound (image J) A.
 Proof.
   split.
-  - move=> U B [r E]; by setoid_rewrite (proj2 E).
+  - move=> U B [r E]; rewrite (proj2 E) //.
   - move=> U r; apply/U; by exists r.
 Qed.
 
@@ -128,8 +134,10 @@ Definition least `{Proset X} (P : X -> Prop) (A : X) : Prop
   := P A /\ pred_lower_bound P A.
 Definition greatest `{Proset X} (P : X -> Prop) (A : X) : Prop
   := P A /\ pred_upper_bound P A.
-Arguments least {_ _} _ _ /.
-Arguments greatest {_ _} _ _ /.
+Arguments least {_ _ _} P _ /.
+Arguments greatest {_ _ _} P _ /.
+Instance: Params (@least) 3 := {}.
+Instance: Params (@greatest) 3 := {}.
 Instance least_proper `{Proset X}
   : Proper ((⥊) ==> (⟛) ==> iff) (least (X:=X)).
 Proof.
@@ -159,12 +167,12 @@ Class HasInf `{Proset X} {R} (J : R -> X) :=
   {inf : X; is_inf : glb J inf}.
 Class HasSup `{Proset X} {R} (J : R -> X) :=
   {sup : X; is_sup : lub J sup}.
-Hint Mode HasInf ! - ! ! : typeclass_instances.
-Hint Mode HasSup ! - ! ! : typeclass_instances.
-Arguments inf {X _ R} J {_}.
-Arguments sup {X _ R} J {_}.
-Arguments is_inf {X _ R} J {_}.
-Arguments is_sup {X _ R} J {_}.
+Hint Mode HasInf ! - - ! ! : typeclass_instances.
+Hint Mode HasSup ! - - ! ! : typeclass_instances.
+Arguments inf {X _ _ R} J {_}.
+Arguments sup {X _ _ R} J {_}.
+Arguments is_inf {X _ _ R} J {_}.
+Arguments is_sup {X _ _ R} J {_}.
 
 (* TODO Lots of stuff! *)
 Definition inf_lb `{Proset X} {R} {J : R -> X} `{!HasInf J} : lower_bound J (inf J)
@@ -178,8 +186,8 @@ Definition inf_right `{Proset X} {R} {J : R -> X} `{!HasInf J} {A : X}
 Lemma inf_universal `{Proset X} {R} {J : R -> X} `{!HasInf J} {A : X}
   : lower_bound J A <-> A ⊢ inf J.
 Proof.
-  split; first by apply/inf_right.
-  move=> D; setoid_rewrite D; apply: inf_lb.
+  split; first by apply: inf_right.
+  move=> ->; apply: inf_lb.
 Qed.
 Definition sup_ub `{Proset X} {R} {J : R -> X} `{!HasSup J} : upper_bound J (sup J)
   := proj1 (is_sup J).
@@ -192,8 +200,8 @@ Definition sup_right `{Proset X} {R} {J : R -> X} `{!HasSup J} (r : R) {A}
 Lemma sup_universal `{Proset X} {R} {J : R -> X} `{!HasSup J} {A : X}
   : upper_bound J A <-> sup J ⊢ A.
 Proof.
-  move=> *; split; first by apply/sup_left.
-  move=> D; setoid_rewrite <- D; apply: sup_ub.
+  move=> *; split; first by apply: sup_left.
+  move=> <-; apply: sup_ub.
 Qed.
 (*
 Definition InfsOfShape (R X : Type) `{!Proset R, !Proset X} : Type
@@ -242,34 +250,36 @@ Proof. move=> SOS J; exists (sup (J ∘ get_discrete)); apply: is_sup. Defined.
 
 Definition einf `{Proset X} {R} `{!DInfsOfShape R X} (J : R -> X) : X := inf J.
 Definition esup `{Proset X} {R} `{!DSupsOfShape R X} (J : R -> X) : X := sup J.
-Arguments einf {_ _ _ _} _ /.
-Arguments esup {_ _ _ _} _ /.
+Arguments einf {_ _ _ _ _} J /.
+Arguments esup {_ _ _ _ _} J /.
+Instance: Params (@einf) 5 := {}.
+Instance: Params (@esup) 5 := {}.
 Instance inf_mono {R} `{Proset X, !DInfsOfShape R X}
   : Monotone (einf (X:=X) (R:=R)).
-Proof. move=> A B D /=; apply/inf_right => r; by apply/inf_left. Qed.
+Proof. move=> A B D /=; apply: inf_right => r; by apply: inf_left. Qed.
 Instance sup_mono {R} `{Proset X, !DSupsOfShape R X}
   : Monotone (esup (X:=X) (R:=R)).
-Proof. move=> A B D /=; apply/sup_left => r; by apply/sup_right. Qed.
+Proof. move=> A B D /=; apply: sup_left => r; by apply: sup_right. Qed.
 
 Notation MeetSemilattice X
   := (forall `{H : EqDecision R}, @Finite R H -> DInfsOfShape R X).
 Notation JoinSemilattice X
   := (forall `{H : EqDecision R}, @Finite R H -> DSupsOfShape R X).
-Class Lattice (X : Type) `{!Proset X, !MeetSemilattice X, !JoinSemilattice X}.
-Hint Mode Lattice ! - - - : typeclass_instances.
+Class Lattice (X : Type) `{Proset X, !MeetSemilattice X, !JoinSemilattice X}.
+Hint Mode Lattice ! - - - - : typeclass_instances.
 Instance lattice_def `{Proset X, !MeetSemilattice X, !JoinSemilattice X}
   : Lattice X := {}.
 Notation InfLattice X := (forall R, DInfsOfShape R X).
 Notation SupLattice X := (forall R, DSupsOfShape R X).
-Class Complete (X : Type) `{!Proset X, !InfLattice X, !SupLattice X}.
-Hint Mode Complete ! - - - : typeclass_instances.
+Class Complete (X : Type) `{Proset X, !InfLattice X, !SupLattice X}.
+Hint Mode Complete ! - - - - : typeclass_instances.
 Instance complete_def `{Proset X, !InfLattice X, !SupLattice X}
   : Complete X := {}.
 
-Class Directed (X : Type) `{!Proset X} :=
+Class Directed (X : Type) `{Proset X} :=
   direct `{Finite R} (J : R -> X) : exists A, upper_bound J A.
 Instance join_semilattice_directed `{Proset X, !JoinSemilattice X} : Directed X.
-Proof. move=> R ? ? J; exists (sup J); apply/sup_ub. Qed.
+Proof. move=> R ? ? J; exists (sup J); apply: sup_ub. Qed.
 Notation DirectedComplete X := (forall `{Proset R}, Directed R -> SupsOfShape R X).
 
 Program Instance prop_inflattice {R} {J : R -> Prop} : HasInf J := {| inf := all J |}.
@@ -285,27 +295,29 @@ Definition lb_diagram `{Proset X} {R} (J : R -> X) : sig (lower_bound J) -> X
   := sval.
 Arguments ub_diagram _ /.
 Arguments lb_diagram _ /.
+Instance: Params (@ub_diagram) 4 := {}.
+Instance: Params (@lb_diagram) 4 := {}.
 Lemma ub_diagram_spec `{Proset X} {R} {J : R -> X} {A}
   : glb (ub_diagram J) A <-> lub J A.
 Proof.
   split=> [Glb | Lub].
   - pose HI := {| inf := A; is_inf := Glb |}; change A with (inf (ub_diagram J)); split.
-    + move=> r; apply/inf_right => -[B UB] //=.
-    + move=> B UB; by apply/(inf_left (B ↾ UB)).
+    + move=> r; apply: inf_right => -[B UB] //=.
+    + move=> B UB; by apply: (inf_left (B ↾ UB)).
   - pose HS := {| sup := A; is_sup := Lub |}; change A with (sup J); split.
-    + move=> [B UB]; apply/sup_left => r //=.
-    + move=> B LB; apply/(LB (sup J ↾ _))/sup_ub.
+    + move=> [B UB]; apply: sup_left => r //=.
+    + move=> B LB; apply/(LB (sup J ↾ _)); apply: sup_ub.
 Qed.
 Lemma lb_diagram_spec `{Proset X} {R} {J : R -> X} {A}
   : lub (lb_diagram J) A <-> glb J A.
 Proof.
   split=> [Lub | Glb].
   - pose HS := {| sup := A; is_sup := Lub |}; change A with (sup (lb_diagram J)); split.
-    + move=> r; apply/sup_left => -[B LB] //=.
-    + move=> B LB; by apply/(sup_right (B ↾ LB)).
+    + move=> r; apply: sup_left => -[B LB] //=.
+    + move=> B LB; by apply: (sup_right (B ↾ LB)).
   - pose HI := {| inf := A; is_inf := Glb |}; change A with (inf J); split.
-    + move=> [B LB]; apply/inf_right => r //=.
-    + move=> B UB; apply/(UB (inf J ↾ _))/inf_lb.
+    + move=> [B LB]; apply: inf_right => r //=.
+    + move=> B UB; apply: (UB (inf J ↾ _)); apply: inf_lb.
 Qed.
 Definition infs_sufficient `{Proset X, !InfLattice X} : SupLattice X
   := fun R J => {| sup := inf (ub_diagram J); is_sup := proj1 ub_diagram_spec (is_inf _) |}.
@@ -334,16 +346,16 @@ Program Instance pw_inf {X} `{Proset Y} {R} {J : R -> X -> Y} `{!forall x, HasIn
   := {| inf x := inf (flip J x) |}.
 Next Obligation.
   move=> X Y ? R J ?; split=> [r | F LB] A.
-  - apply/inf_lb.
-  - apply/inf_right; firstorder.
+  - apply: inf_lb.
+  - apply: inf_right; firstorder.
 Qed.
 Program Instance pw_sup {X} `{Proset Y} {R} {J : R -> X -> Y} `{!forall x, HasSup (flip J x)}
   : HasSup J
   := {| sup x := sup (flip J x) |}.
 Next Obligation.
   move=> X Y ? R J ?; split=> [r | F UB] A.
-  - apply/sup_ub.
-  - apply/sup_left; firstorder.
+  - apply: sup_ub.
+  - apply: sup_left; firstorder.
 Qed.
 Program Instance op_inf `{Proset X} {R} {J : R -> op X} `{!HasSup (get_op ∘ J)}
   : HasInf J
@@ -351,16 +363,16 @@ Program Instance op_inf `{Proset X} {R} {J : R -> op X} `{!HasSup (get_op ∘ J)
 Next Obligation.
   move=> X ? R J ?; split=> [r | A LB] /=.
   (* TODO Work out better utilities for working with op. *)
-  - rewrite op_def; by apply/(sup_right r).
-  - apply/sup_left; firstorder.
+  - rewrite op_def; by apply: (sup_right r).
+  - apply: sup_left; firstorder.
 Qed.
 Program Instance op_sup `{Proset X} {R} {J : R -> op X} `{!HasInf (get_op ∘ J)}
   : HasSup J
   := {| sup := Op (inf (get_op ∘ J)) |}.
 Next Obligation.
   move=> X ? R J ?; split=> [r | A UB] /=.
-  - rewrite op_def; by apply/(inf_left r).
-  - apply/inf_right; firstorder.
+  - rewrite op_def; by apply: (inf_left r).
+  - apply: inf_right; firstorder.
 Qed.
 Lemma curry_dep {A B} {P : A * B -> Prop} : (forall p, P p) <-> (forall a b, P (a, b)).
 Proof. split=> [H a b | H [a b]] //. Qed.
@@ -377,7 +389,7 @@ Program Instance prod_inf `{Proset X, Proset Y} {R} {J : R -> X * Y}
   : HasInf J
   := {| inf := (inf (fst ∘ J), inf (snd ∘ J)) |}.
 Next Obligation.
-  move=> ? ? ? ? ? J ? ?.
+  move=> ? ? ? ? ? ? ? J ? ?.
   rewrite /greatest /pred_upper_bound curry_dep; setoid_rewrite (prod_lb (J:=J)); simpl.
   setoid_rewrite inf_universal; firstorder.
 Qed.
@@ -386,7 +398,7 @@ Program Instance prod_sup `{Proset X, Proset Y} {R} {J : R -> X * Y}
   : HasSup J
   := {| sup := (sup (fst ∘ J), sup (snd ∘ J)) |}.
 Next Obligation.
-  move=> ? ? ? ? ? J ? ?.
+  move=> ? ? ? ? ? ? ? J ? ?.
   rewrite /least /pred_lower_bound curry_dep; setoid_rewrite (prod_ub (J:=J)); simpl.
   setoid_rewrite sup_universal; firstorder.
 Qed.
@@ -398,9 +410,9 @@ Notation Top X := (DInfsOfShape void X).
 Notation Bot X := (DSupsOfShape void X).
 Notation BinMeets X := (DInfsOfShape bool X).
 Notation BinJoins X := (DSupsOfShape bool X).
-Definition top (X : Type) `{!Proset X, !Top X} : X :=
+Definition top (X : Type) `{Proset X, !Top X} : X :=
   inf (of_void _).
-Definition bot (X : Type) `{!Proset X, !Bot X} : X :=
+Definition bot (X : Type) `{Proset X, !Bot X} : X :=
   sup (of_void _).
 Notation "⊤" := (top _) : proset_scope.
 Notation "⊥" := (bot _) : proset_scope.
@@ -418,6 +430,11 @@ Arguments bot : simpl never.
 Arguments meet : simpl never.
 Arguments join : simpl never.
 Arguments embed_prop : simpl never.
+Instance: Params (@top) 4 := {}.
+Instance: Params (@bot) 4 := {}.
+Instance: Params (@meet) 4 := {}.
+Instance: Params (@join) 4 := {}.
+Instance: Params (@embed_prop) 6 := {}.
 
 Definition top_right `{Proset X, !Top X} {A : X} : A ⊢ ⊤ :=
   inf_right (Empty_set_ind _).
@@ -450,53 +467,53 @@ Lemma embed_prop_left `{Complete X} {P : Prop} {Q : X}
 Proof. move=> D; by apply: sup_left. Qed.
 Lemma embed_prop_right `{Complete X} {P : X} {Q : Prop}
   : Q -> P ⊢ ⌜ Q ⌝.
-Proof. move=> *; apply/sup_right/top_right. Qed.
+Proof. move=> *; apply: sup_right; apply: top_right. Qed.
 Instance meet_bi `{Proset X, !BinMeets X} : Bimonotone (meet (X:=X)).
 Proof.
-  move=> A A' B B' D1 D2; apply/meet_right.
-  + by apply/meet_left1.
-  + by apply/meet_left2.
+  move=> A A' B B' D1 D2; apply: meet_right.
+  + by apply: meet_left1.
+  + by apply: meet_left2.
 Qed.
 Instance join_bi `{Proset X, !BinJoins X} : Bimonotone (join (X:=X)).
 Proof.
-  move=> A A' B B' D1 D2; apply/join_left.
-  + by apply/join_right1.
-  + by apply/join_right2.
+  move=> A A' B B' D1 D2; apply: join_left.
+  + by apply: join_right1.
+  + by apply: join_right2.
 Qed.
 Instance embed_prop_mono `{Complete X} : Monotone (embed_prop (X:=X)).
-Proof. move=> P Q D; apply/embed_prop_left => ?; by apply/embed_prop_right/D. Qed.
+Proof. move=> P Q D; apply: embed_prop_left => ?; by apply embed_prop_right, D. Qed.
 
-Program Definition build_meet_semilattice (X : Type) `{!Proset X, !Top X, !BinMeets X}
+Program Definition build_meet_semilattice (X : Type) `{Proset X, !Top X, !BinMeets X}
   : MeetSemilattice X
   := fun R _ _ J => {| inf := foldr meet ⊤ (map J (enum R)) |}.
 Next Obligation.
-  move=> X ? ? ? R ? ? J.
+  move=> X ? ? ? ? R ? ? J.
   rewrite /greatest /pred_upper_bound /lower_bound; setoid_rewrite <- Forall_finite.
   elim: (enum R) => /= [| r rs [IH1 IH2]]; split.
   - done.
-  - move=> *; apply/top_right.
+  - move=> *; apply: top_right.
   - constructor.
-    + apply/meet_proj1.
+    + apply: meet_proj1.
     + apply: Forall_impl IH1 (fun _ => meet_left2).
-  - move=> B /Forall_cons [? /IH2 ?]; by apply/meet_right.
+  - move=> B /Forall_cons [? /IH2 ?]; by apply: meet_right.
 Qed.
-Program Definition build_join_semilattice (X : Type) `{!Proset X, !Bot X, !BinJoins X}
+Program Definition build_join_semilattice (X : Type) `{Proset X, !Bot X, !BinJoins X}
   : JoinSemilattice X
   := fun R _ _ J => {| sup := foldr join ⊥ (map J (enum R)) |}.
 Next Obligation.
-  move=> X ? ? ? R ? ? J.
+  move=> X ? ? ? ? R ? ? J.
   rewrite /least /pred_lower_bound /upper_bound; setoid_rewrite <- Forall_finite.
   elim: (enum R) => /= [| r rs [IH1 IH2]]; split.
   - done.
-  - move=> *; apply/bot_left.
+  - move=> *; apply: bot_left.
   - constructor.
-    + apply/join_inj1.
+    + apply: join_inj1.
     + apply: Forall_impl IH1 (fun _ => join_right2).
-  - move=> B /Forall_cons [? /IH2 ?]; by apply/join_left.
+  - move=> B /Forall_cons [? /IH2 ?]; by apply: join_left.
 Qed.
 
 Program Instance nat_join_semilattice : JoinSemilattice nat
-  := @build_join_semilattice nat _ (fun _ => {| sup := 0 |})
+  := @build_join_semilattice nat _ _ (fun _ => {| sup := 0 |})
                              (fun J => {| sup := max (J true) (J false) |}).
 Next Obligation. compute; dintuition. Qed.
 Next Obligation.
@@ -505,7 +522,7 @@ Next Obligation.
   - move=> n UB; apply: Nat.max_lub; apply: UB.
 Qed.
 Program Instance bool_meet_semilattice : MeetSemilattice bool
-  := @build_meet_semilattice bool _ (fun _ => {| inf := true |})
+  := @build_meet_semilattice bool _ _ (fun _ => {| inf := true |})
                              (fun J => {| inf := andb (J true) (J false) |}).
 Next Obligation. compute; split; [dintuition | case; dintuition]. Qed.
 Next Obligation.
@@ -514,7 +531,7 @@ Next Obligation.
   - move=> b LB; apply/implyP => H; apply/andP; split; by apply/(implyP (LB _)).
 Qed.
 Program Instance bool_join_semilattice : JoinSemilattice bool
-  := @build_join_semilattice bool _ (fun _ => {| sup := false |})
+  := @build_join_semilattice bool _ _ (fun _ => {| sup := false |})
                              (fun J => {| sup := orb (J true) (J false) |}).
 Next Obligation. compute; split; [dintuition | case; dintuition]. Qed.
 Next Obligation.
@@ -527,8 +544,8 @@ Class PreservesInf `{Proset X, Proset Y} {R} (F : X -> Y) (J : R -> X) :=
   preserve_inf A : glb J A -> glb (F ∘ J) (F A).
 Class PreservesSup `{Proset X, Proset Y} {R} (F : X -> Y) (J : R -> X) :=
   preserve_sup A : lub J A -> lub (F ∘ J) (F A).
-Hint Mode PreservesInf ! - ! - ! ! ! : typeclass_instances.
-Hint Mode PreservesSup ! - ! - ! ! ! : typeclass_instances.
+Hint Mode PreservesInf ! - - ! - - ! ! ! : typeclass_instances.
+Hint Mode PreservesSup ! - - ! - - ! ! ! : typeclass_instances.
 Lemma preserves_inf_alt1 `{Proset X, Proset Y} {R} {F : X -> Y} {J : R -> X}
       `{!Monotone F, !HasInf J}
   : PreservesInf F J <-> glb (F ∘ J) (F (inf J)).
@@ -573,22 +590,22 @@ Notation Cocontinuous F := (forall R, PresDSupsOfShape R F).
 Notation Lex F := (forall `{H : EqDecision R}, @Finite R H -> PresDInfsOfShape R F).
 Notation Rex F := (forall `{H : EqDecision R}, @Finite R H -> PresDSupsOfShape R F).
 Notation ScottContinuous F :=
-  (forall `{H : Proset R}, @Directed R H -> PresSupsOfShape R F).
+  (forall `{H0 : Le R, H : @Proset R H0}, @Directed R H0 H -> PresSupsOfShape R F).
 
 Lemma F_inf `{Proset X, Proset Y} {R} {F : X -> Y} {J : R -> X}
       `{!Monotone F, !HasInf J, !HasInf (F ∘ J)}
   : F (inf J) ⊢ inf (fun r => F (J r)).
-Proof. apply/inf_right => r; apply/mono/inf_lb. Qed.
+Proof. apply: inf_right => r; apply: mono; apply: inf_lb. Qed.
 Lemma F_sup `{Proset X, Proset Y} {R} {F : X -> Y} {J : R -> X}
       `{!Monotone F, !HasSup J, !HasSup (F ∘ J)}
   : sup (fun r => F (J r)) ⊢ F (sup J).
-Proof. apply/sup_left => r; apply/mono/sup_ub. Qed.
+Proof. apply: sup_left => r; apply: mono; apply: sup_ub. Qed.
 Lemma distrib_inf_sufficient `{Complete X, Complete Y} {F : X -> Y} `{!Monotone F}
   : (forall {R} (J : R -> X), inf (F ∘ J) ⊢ F (inf J)) -> Continuous F.
-Proof. move=> Distr R J; apply/preserves_inf_alt2; split; [apply/F_inf | apply/Distr]. Qed.
+Proof. move=> Distr R J; apply/preserves_inf_alt2; split; [apply: F_inf | apply: Distr]. Qed.
 Lemma distrib_sup_sufficient `{Complete X, Complete Y} {F : X -> Y} `{!Monotone F}
   : (forall {R} (J : R -> X), F (sup J) ⊢ sup (F ∘ J)) -> Cocontinuous F.
-Proof. move=> Distr R J; apply/preserves_sup_alt2; split; [apply/Distr | apply/F_sup]. Qed.
+Proof. move=> Distr R J; apply/preserves_sup_alt2; split; [apply: Distr | apply: F_sup]. Qed.
 
 (* A number of continuity results are over in adjunction.v, because they drop out
    for free from adjunctions that we were proving anyway. *)
@@ -630,16 +647,16 @@ Lemma reflecting_reflects_inf `{Proset X, Proset Y} {F : X -> Y}
   : glb (F ∘ J) (F A) -> glb J A.
 Proof.
   move=> Glb; split=> [r | A' LB].
-  - apply/(reflect F)/(proj1 Glb).
-  - apply/(reflect F)/(proj2 Glb) => r /=; apply/mono/LB.
+  - apply: (reflect F); apply: (proj1 Glb).
+  - apply: (reflect F); apply: (proj2 Glb) => r /=; by apply: mono.
 Qed.
 Lemma reflecting_reflects_sup `{Proset X, Proset Y} {F : X -> Y}
       `{!Monotone F, !Reflecting F} {R} (J : R -> X) A
   : lub (F ∘ J) (F A) -> lub J A.
 Proof.
   move=> Lub; split=> [r | A' UB].
-  - apply/(reflect F)/(proj1 Lub).
-  - apply/(reflect F)/(proj2 Lub) => r /=; apply/mono/UB.
+  - apply: (reflect F); apply: (proj1 Lub).
+  - apply: (reflect F); apply: (proj2 Lub) => r /=; by apply: mono.
 Qed.
 Lemma reflecting_undistrib_inf `{Proset X, Proset Y} {F : X -> Y}
       `{!Monotone F, !Reflecting F} {R} (J : R -> X) `{!HasInf (F ∘ J)} A
@@ -656,24 +673,24 @@ Instance lex_def `{Proset X, Proset Y} {F : X -> Y} `{!Lex F} `{Finite R} {J : R
 *)
 Lemma distrib_top `{Proset X, Proset Y, !Top X, !Top Y} {F : X -> Y} `{!Lex F}
   : F ⊤ ⟛ ⊤.
-Proof. rewrite distrib_inf; by apply/(mono_core einf)/pw_core'. Qed.
+Proof. rewrite distrib_inf; by apply: (mono_core einf); apply/pw_core'. Qed.
 Lemma distrib_bot `{Proset X, Proset Y, !Bot X, !Bot Y} {F : X -> Y} `{!Rex F}
   : F ⊥ ⟛ ⊥.
-Proof. rewrite distrib_sup; by apply/(mono_core esup)/pw_core'. Qed.
+Proof. rewrite distrib_sup; by apply: (mono_core esup); apply/pw_core'. Qed.
 Lemma distrib_meet `{Proset X, Proset Y, !BinMeets X, !BinMeets Y}
       {F : X -> Y} `{!Lex F} {A B}
   : F (A ⩕ B) ⟛ F A ⩕ F B.
-Proof. rewrite distrib_inf; apply/(mono_core einf)/pw_core' => -[] //. Qed.
+Proof. rewrite distrib_inf; apply: (mono_core einf); apply/pw_core' => -[] //. Qed.
 Lemma distrib_join `{Proset X, Proset Y, !BinJoins X, !BinJoins Y}
       {F : X -> Y} `{!Rex F} {A B}
   : F (A ⩖ B) ⟛ F A ⩖ F B.
-Proof. rewrite distrib_sup; apply/(mono_core esup)/pw_core' => -[] //. Qed.
+Proof. rewrite distrib_sup; apply: (mono_core esup); apply/pw_core' => -[] //. Qed.
 Lemma distrib_embed_prop `{Complete X, Complete Y} {F : X -> Y}
       `{!Lex F, !Cocontinuous F} {P}
   : F (⌜ P ⌝) ⟛ ⌜ P ⌝.
 Proof.
-  rewrite distrib_sup; apply/(mono_core esup)/pw_core' => H_P /=.
-  apply/distrib_top.
+  rewrite distrib_sup; apply: (mono_core esup); apply/pw_core' => H_P /=.
+  apply: distrib_top.
 Qed.
 
 Program Instance Hom_inf `{Proset X, Proset Y} {R} {J : R -> Hom X Y}
@@ -681,11 +698,11 @@ Program Instance Hom_inf `{Proset X, Proset Y} {R} {J : R -> Hom X Y}
   : HasInf J
   := {| inf := inf (ap_Hom ∘ J) ↾ _ |}.
 Next Obligation.
-  move=> X ? Y ? R J ? A B D /=.
-  apply/inf_right => r; apply/(inf_left r) => /=; by apply: Hom_mono.
+  move=> X ? ? Y ? ? R J ? A B D /=.
+  apply: inf_right => r; apply: (inf_left r) => /=; by apply: Hom_mono.
 Qed.
 Next Obligation.
-  move=> X ? Y ? R J ? /=; split=> [r | A' LB] A /=.
+  move=> X ? ? Y ? ? R J ? /=; split=> [r | A' LB] A /=.
   - apply: (inf_lb r).
   - apply: inf_right => r; apply: LB.
 Qed.
@@ -694,11 +711,11 @@ Program Instance Hom_sup `{Proset X, Proset Y} {R} {J : R -> Hom X Y}
   : HasSup J
   := {| sup := sup (ap_Hom ∘ J) ↾ _ |}.
 Next Obligation.
-  move=> X ? Y ? R J ? A B D /=.
-  apply/sup_left => r; apply/(sup_right r) => /=; by apply: Hom_mono.
+  move=> X ? ? Y ? ? R J ? A B D /=.
+  apply: sup_left => r; apply: (sup_right r) => /=; by apply: Hom_mono.
 Qed.
 Next Obligation.
-  move=> X ? Y ? R J ? /=; split=> [r | A' UB] A /=.
+  move=> X ? ? Y ? ? R J ? /=; split=> [r | A' UB] A /=.
   - apply: (sup_ub r).
   - apply: sup_left => r; apply: UB.
 Qed.
@@ -724,22 +741,22 @@ Instance Hom_compose_continuous `{Proset X, Proset X', Complete Y} {F : Hom X' X
   : Continuous (fun G : Hom X Y => G ○ F).
 Proof.
   apply: distrib_inf_sufficient.
-  - move=> G G'; apply: bi_l.
-  - move=> R J A /=; apply/(mono einf) => ? //=.
+  - move=> G G'; apply: (bi_l Hom_compose).
+  - move=> R J A /=; apply: (mono einf) => ? //=.
 Qed.
 Instance Hom_compose_cocontinuous `{Proset X, Proset X', Complete Y} {F : Hom X' X}
   : Cocontinuous (fun G : Hom X Y => G ○ F).
 Proof.
   apply: distrib_sup_sufficient.
-  - move=> G G'; apply: bi_l.
-  - move=> R J A /=; apply/(mono esup) => ? //=.
+  - move=> G G'; apply: (bi_l Hom_compose).
+  - move=> R J A /=; apply: (mono esup) => ? //=.
 Qed.
 Instance Hom_eval_at_continuous `{Proset X, Complete Y} {x : X}
   : Continuous (Hom_eval_at (Y:=Y) x).
-Proof. by apply/distrib_inf_sufficient. Qed.
+Proof. by apply: distrib_inf_sufficient. Qed.
 Instance Hom_eval_at_cocontinuous `{Proset X, Complete Y} {x : X}
   : Cocontinuous (Hom_eval_at (Y:=Y) x).
-Proof. by apply/distrib_sup_sufficient. Qed.
+Proof. by apply: distrib_sup_sufficient. Qed.
 
 
 (* Example *)
@@ -747,22 +764,23 @@ Definition fixed_point `{Proset X} (F : X -> X) (A : X) : Prop
   := F A ⟛ A.
 Definition kleene_chain `{Proset X, !Bot X} (F : X -> X) : nat -> X
   := fun n => Nat.iter n F ⊥.
+Instance: Params (@kleene_chain) 4 := {}.
 Lemma kleene_chain_chain `{Proset X, !Bot X} {F : X -> X} `{!Monotone F}
   : chain (kleene_chain F).
-Proof. elim=> /= [| n]; [apply/bot_left | apply/mono]. Qed.
+Proof. elim=> /= [| n]; [apply: bot_left | apply: mono]. Qed.
 Instance kleene_chain_mono `{Proset X, !Bot X} {F : X -> X} `{!Monotone F}
   : Monotone (kleene_chain F).
-Proof. apply/chain_mono/kleene_chain_chain. Qed.
+Proof. apply chain_mono, kleene_chain_chain. Qed.
 Theorem kleene `{Proset X, !DirectedComplete X, !Bot X} {F : X -> X}
         `{!Monotone F, !ScottContinuous F}
   : least (fixed_point F) (sup (kleene_chain F)).
 Proof.
   split.
-  - rewrite /fixed_point distrib_sup; split; apply/sup_left => n.
-    + by apply/(sup_right (S n)).
-    + apply/(sup_right n)/kleene_chain_chain.
-  - move=> A FP; apply/sup_left; elim=> /= [| n].
-    + apply/bot_left.
+  - rewrite /fixed_point distrib_sup; split; apply: sup_left => n.
+    + by apply: (sup_right (S n)).
+    + apply (sup_right n), kleene_chain_chain.
+  - move=> A FP; apply: sup_left; elim=> /= [| n].
+    + apply: bot_left.
     + move=> D; unfold fixed_point in FP.
-      setoid_rewrite <- (proj1 FP); by apply/mono.
+      rewrite -(proj1 FP); by apply: mono.
 Qed.

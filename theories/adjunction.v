@@ -16,10 +16,11 @@ Local Open Scope proset_util_scope.
 Class Adjoint `{Proset X, Proset Y} (F : X -> Y) (G : Y -> X)
   : Prop := {adj_unit : id ⊢ G ∘ F; adj_counit : F ∘ G ⊢ id}.
 (* TODO This is probably worth putting some more careful thought into! *)
-Hint Mode Adjoint ! - ! - ! - : typeclass_instances.
-Hint Mode Adjoint ! - ! - - ! : typeclass_instances.
-Arguments adj_unit {_ _ _ _ _ _} Adj : rename.
-Arguments adj_counit {_ _ _ _ _ _} Adj : rename.
+Hint Mode Adjoint ! - - ! - - ! - : typeclass_instances.
+Hint Mode Adjoint ! - - ! - - - ! : typeclass_instances.
+Instance: Params (@Adjoint) 6 := {}.
+Arguments adj_unit {_ _ _ _ _ _ _ _} Adj : rename.
+Arguments adj_counit {_ _ _ _ _ _ _ _} Adj : rename.
 Infix "⊣" := Adjoint (no associativity, at level 70) : proset_scope.
 Definition adj_unit' `(Adj : Adjoint X Y F G) {A B} (D : A ⊢ B) : A ⊢ G (F B)
   := transitivity D (adj_unit Adj _).
@@ -29,12 +30,22 @@ Lemma transpose `(Adj : Adjoint X Y F G) `{!Monotone F, !Monotone G} (A : X) (B 
   : F A ⊢ B <-> A ⊢ G B.
 Proof.
   split=> D.
-  - setoid_rewrite <- D; by apply adj_unit'.
-  - setoid_rewrite D; by apply adj_counit'.
+  - rewrite -D; by apply adj_unit'.
+  - rewrite D; by apply adj_counit'.
 Qed.
 Lemma transpose_sufficient `{Proset X, Proset Y, !Monotone F, !Monotone G}
   : (forall (A : X) (B : Y), F A ⊢ B <-> A ⊢ G B) -> F ⊣ G.
 Proof. move=> Transpose; constructor=> A /=; by apply/Transpose. Qed.
+Instance adjoint_proper `{Proset X, Proset Y}
+  : Proper ((⥊) ==> (⥊) ==> iff) (Adjoint (X:=X) (Y:=Y)).
+Proof.
+  apply: proper_sym_impl_iff_2.
+  {firstorder. }
+  {firstorder. }
+  move=> F F' E_F G G' E_G Adj; constructor=> A /=.
+  - rewrite -(proj1 (E_G _ _ (E_F _ _ _))) //; apply: (adj_unit Adj).
+  - rewrite (proj2 (E_F _ _ (E_G _ _ _))) //; apply: (adj_counit Adj).
+Qed.
 
 Lemma reflecting_left_adjoint `(Adj : Adjoint X Y F G) `{!Reflecting F} : G ∘ F ⟛ id.
 Proof.
@@ -70,7 +81,7 @@ Lemma reflecting_left_adjoint_glb
   : glb (F ∘ J) A -> glb J (G A).
 Proof.
   move=> Glb.
-  enough (G ∘ F ∘ J ⟛ J) as E by (setoid_rewrite <- E; apply: preserve_inf Glb).
+  enough (G ∘ F ∘ J ⟛ J) as E by (rewrite -E; apply: preserve_inf Glb).
   apply/pw_core' => r /=; apply/(pw_core (reflecting_left_adjoint Adj)).
 Qed.
 Lemma reflecting_right_adjoint_lub
@@ -79,7 +90,7 @@ Lemma reflecting_right_adjoint_lub
   : lub (G ∘ J) A -> lub J (F A).
 Proof.
   move=> Lub.
-  enough (F ∘ G ∘ J ⟛ J) as E by (setoid_rewrite <- E; apply: preserve_sup Lub).
+  enough (F ∘ G ∘ J ⟛ J) as E by (rewrite -E; apply: preserve_sup Lub).
   apply/pw_core' => r /=; apply/(pw_core (reflecting_right_adjoint Adj)).
 Qed.
 (* TODO be more fine-grained *)
@@ -107,21 +118,23 @@ Definition universal_left_adjoint `{Proset X, Proset Y, !InfLattice Y}
 Definition universal_right_adjoint `{Proset X, Proset Y, !SupLattice X}
            (F : X -> Y) (B : Y) : X
   := sup (fun A : {A0 | F A0 ⊢ B} => `A).
-Arguments universal_left_adjoint {_ _ _ _ _} G A /.
-Arguments universal_right_adjoint {_ _ _ _ _} F B /.
+Arguments universal_left_adjoint {_ _ _ _ _ _ _} G A /.
+Arguments universal_right_adjoint {_ _ _ _ _ _ _} F B /.
+Instance: Params (@universal_left_adjoint) 7 := {}.
+Instance: Params (@universal_right_adjoint) 7 := {}.
 Instance ula_proper `{Proset X, Proset Y, !InfLattice Y}
   : Proper ((⊢) --> (⇀)) (universal_left_adjoint (X:=X) (Y:=Y)).
 Proof.
   move=> F G D A B D' /=.
-  apply/inf_right => -[B0 D''] /=; apply/(inf_lb (B0 ↾ _)).
-  setoid_rewrite D'; by setoid_rewrite D''.
+  apply: inf_right => -[B0 D''] /=; apply: (inf_lb (B0 ↾ _)).
+  rewrite D' D'' //.
 Qed.
 Instance ura_proper `{Proset X, Proset Y, !SupLattice X}
   : Proper ((⊢) --> (⇀)) (universal_right_adjoint (X:=X) (Y:=Y)).
 Proof.
   move=> F G D A B D' /=.
-  apply/sup_left => -[A0 D''] /=; apply/(sup_ub (A0 ↾ _)).
-  setoid_rewrite <- D'; by setoid_rewrite <- D''.
+  apply: sup_left => -[A0 D''] /=; apply: (sup_ub (A0 ↾ _)).
+  rewrite -D' -D'' //.
 Qed.
 (* These are not instances because we don't want them to conflict with other ones when we
    give more useful/explicit definitions. But they should be suitable for using to make
@@ -216,6 +229,10 @@ Definition global_lan `{Proset X, Proset X', Proset Y}
 Definition global_ran `{Proset X, Proset X', Proset Y}
            (p : X -> X') `{!Monotone p} (ran_p : Hom X Y -> Hom X' Y) : Prop
   := (.○ in_Hom p) ⊣ ran_p.
+Instance: Params (@local_lan) 9 := {}.
+Instance: Params (@local_ran) 9 := {}.
+Instance: Params (@global_lan) 9 := {}.
+Instance: Params (@global_ran) 9 := {}.
 Lemma local_global_lan `{Proset X, Proset X', Proset Y}
       {p : X -> X'} {lan_p : Hom X Y -> Hom X' Y} `{!Monotone p, !Monotone lan_p}
   : global_lan p lan_p <-> forall F : Hom X Y, local_lan p F (lan_p F).
@@ -253,6 +270,10 @@ Definition global_lift `{Proset X, Proset Y, Proset Y'}
 Definition global_rift `{Proset X, Proset Y, Proset Y'}
            (p : Y' -> Y) `{!Monotone p} (rift_p : Hom X Y -> Hom X Y') : Prop
   := (in_Hom p ○.) ⊣ rift_p.
+Instance: Params (@local_lift) 9 := {}.
+Instance: Params (@local_rift) 9 := {}.
+Instance: Params (@global_lift) 9 := {}.
+Instance: Params (@global_rift) 9 := {}.
 Lemma local_global_lift `{Proset X, Proset Y, Proset Y'}
       {p : Y' -> Y} {lift_p : Hom X Y -> Hom X Y'} `{!Monotone p, !Monotone lift_p}
   : global_lift p lift_p <-> forall F : Hom X Y, local_lift p F (lift_p F).
@@ -283,49 +304,51 @@ Instance precomp_adjoint `{Proset X, Proset X', Proset Y}
   : ((.○ p') : Hom X Y -> _) ⊣ (.○ p).
 Proof.
   constructor=> f y /=.
-  - apply/mono/adj_unit.
-  - apply/mono/adj_counit.
+  - apply: mono; apply: adj_unit.
+  - apply: mono; apply: adj_counit.
 Qed.
 Instance postcomp_adjoint' `{Proset X, Proset Y', Proset Y}
          {p : Hom Y' Y} {p' : Hom Y Y'} `{!p ⊣ p'}
   : ((p ○.) : Hom X Y' -> _) ⊣ (p' ○.).
 Proof.
   constructor=> f y /=.
-  - apply/adj_unit.
-  - apply/adj_counit.
+  - apply: adj_unit.
+  - apply: adj_counit.
 Qed.
 
 Program Definition universal_lan {X} `{Proset X', Proset Y, !SupLattice Y}
         (p : X -> X') (F : X -> Y) : Hom X' Y
   := fun x' => sup (fun y : {y0 | p y0 ⊢ x'} => F (`y)).
 Next Obligation.
-  move=> X X' ? Y ? ? p F A B D.
-  apply/sup_left => -[x D'] /=.
-  apply/(sup_right (x ↾ _)); by etransitivity.
+  move=> X X' ? ? Y ? ? ? p F A B D.
+  apply: sup_left => -[x D'] /=.
+  apply: (sup_right (x ↾ _)); by etransitivity.
 Qed.
-Arguments universal_lan {_ _ _ _ _ _} p F /.
+Arguments universal_lan {_ _ _ _ _ _ _ _} p F /.
+Instance: Params (@universal_lan) 8 := {}.
 Program Definition universal_ran {X} `{Proset X', Proset Y, !InfLattice Y}
         (p : X -> X') (F : X -> Y) : Hom X' Y
   := fun x' => inf (fun y : {y0 | x' ⊢ p y0} => F (`y)).
 Next Obligation.
-  move=> X X' ? Y ? ? p F A B D.
-  apply/inf_right => -[x D'] /=.
-  apply/(inf_left (x ↾ _)); by etransitivity.
+  move=> X X' ? ? Y ? ? ? p F A B D.
+  apply: inf_right => -[x D'] /=.
+  apply: (inf_left (x ↾ _)); by etransitivity.
 Qed.
-Arguments universal_ran {_ _ _ _ _ _} p F /.
+Arguments universal_ran {_ _ _ _ _ _ _ _} p F /.
+Instance: Params (@universal_ran) 8 := {}.
 Lemma universal_lan_global_lan `{Proset X, Proset X', Proset Y, !SupLattice Y}
       {p : X -> X'} `{!Monotone p}
   : global_lan (Y:=Y) p (universal_lan p).
 Proof.
   constructor=> f x /=.
-  - by apply/(sup_ub (x ↾ _)).
-  - apply/sup_left => -[? D] /=; by setoid_rewrite D.
+  - by apply: (sup_ub (x ↾ _)).
+  - apply: sup_left => -[? D] /=; rewrite D //.
 Qed.
 Lemma universal_ran_global_ran `{Proset X, Proset X', Proset Y, !InfLattice Y}
       {p : X -> X'} `{!Monotone p}
   : global_ran (Y:=Y) p (universal_ran p).
 Proof.
   constructor=> f x /=.
-  - apply/inf_right => -[? D] /=; by setoid_rewrite D.
-  - by apply/(inf_lb (x ↾ _)).
+  - apply: inf_right => -[? D] /=; rewrite D //.
+  - by apply: (inf_lb (x ↾ _)).
 Qed.
