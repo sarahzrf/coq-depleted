@@ -19,7 +19,11 @@ Proof.
   move=> J1 J2 D_J A1 A2 /= D_A L r.
   rewrite D_A -(D_J r) //.
 Qed.
-Instance lower_bound_ext `{Proset X} {R} {J : R -> X} : Extensional (lower_bound J).
+Instance lower_bound_mono `{Proset X} {R} : Monotone (lower_bound (X:=X) (R:=R)).
+Proof. move=> J1 J2 D_J A L r; rewrite -(D_J r) //. Qed.
+Instance lower_bound_ext `{Proset X} {R} : Extensional (lower_bound (X:=X) (R:=R)).
+Proof. typeclasses eauto. Qed.
+Instance lower_bound_anti `{Proset X} {R} {J : R -> X} : Antitone (lower_bound J).
 Proof. typeclasses eauto. Qed.
 Instance upper_bound_proper `{Proset X} {R}
   : Proper ((⊢) --> (⇀)) (upper_bound (X:=X) (R:=R)).
@@ -27,7 +31,11 @@ Proof.
   move=> J1 J2 D_J A1 A2 D_A U r.
   rewrite -D_A (D_J r) //.
 Qed.
-Instance upper_bound_ext `{Proset X} {R} {J : R -> X} : Extensional (upper_bound J).
+Instance upper_bound_anti `{Proset X} {R} : Antitone (upper_bound (X:=X) (R:=R)).
+Proof. move=> J1 J2 /= D_J A L r; rewrite (D_J r) //. Qed.
+Instance upper_bound_ext `{Proset X} {R} : Extensional (upper_bound (X:=X) (R:=R)).
+Proof. typeclasses eauto. Qed.
+Instance upper_bound_mono `{Proset X} {R} {J : R -> X} : Monotone (upper_bound J).
 Proof. typeclasses eauto. Qed.
 Instance lower_bound_proper' `{Proset X} {R}
   : Proper ((⊢) --> (⊢) ++> flip impl) (lower_bound (X:=X) (R:=R)).
@@ -154,25 +162,73 @@ Proof.
   - move=> ? ? /pw_harpoon' [? ? E1] ? ? E2 /= [H1 H2].
       by rewrite -> E1, E2 in H1, H2.
 Qed.
-Lemma least_unique `{Proset X} {P : X -> Prop} `{!Extensional P} {A A'}
+Lemma least_unique `{Proset X} {P : X -> Prop} {A A'}
   : least P A -> least P A' -> A ⟛ A'.
 Proof. firstorder. Qed.
-Lemma greatest_unique `{Proset X} {P : X -> Prop} `{!Extensional P} {A A'}
+Lemma greatest_unique `{Proset X} {P : X -> Prop} {A A'}
   : greatest P A -> greatest P A' -> A ⟛ A'.
 Proof. firstorder. Qed.
+Lemma least_unique_het `{Proset X} {P P' : X -> Prop} {A A'}
+  : P ⟛ P' -> least P A -> least P' A' -> A ⟛ A'.
+Proof. firstorder. Qed.
+Lemma greatest_unique_het `{Proset X} {P P' : X -> Prop} {A A'}
+  : P ⟛ P' -> greatest P A -> greatest P' A' -> A ⟛ A'.
+Proof. firstorder. Qed.
 
-Notation glb J A := (greatest (lower_bound J) A).
-Notation lub J A := (least (upper_bound J) A).
+Definition glb `{Proset X} {R} (J : R -> X) : X -> Prop := greatest (lower_bound J).
+Definition lub `{Proset X} {R} (J : R -> X) : X -> Prop := least (upper_bound J).
+Arguments glb {_ _ _ _} J /.
+Arguments lub {_ _ _ _} J /.
+Instance: Params (@glb) 4 := {}.
+Instance: Params (@lub) 4 := {}.
+Instance glb_proper `{Proset X} {R}
+  : Proper ((⟛) ==> (⟛) ==> iff) (glb (X:=X) (R:=R)).
+Proof.
+  move=> ? ? E1 ? ? E2; rewrite /glb E1; apply/(greatest_proper _ _ proper_prf _ _ E2).
+Qed.
+Instance lub_proper `{Proset X} {R}
+  : Proper ((⟛) ==> (⟛) ==> iff) (lub (X:=X) (R:=R)).
+Proof.
+  move=> ? ? E1 ? ? E2; rewrite /lub E1; apply/(least_proper _ _ proper_prf _ _ E2).
+Qed.
+Instance glb_proper' `{Proset X} {R}
+  : Proper ((⟛) --> (⟛) --> flip iff) (glb (X:=X) (R:=R)).
+Proof. move=> ? ? E1 ? ? E2; by apply: glb_proper. Qed.
+Instance lub_proper' `{Proset X} {R}
+  : Proper ((⟛) --> (⟛) --> flip iff) (lub (X:=X) (R:=R)).
+Proof. move=> ? ? E1 ? ? E2; by apply: lub_proper. Qed.
+
 Class HasInf `{Proset X} {R} (J : R -> X) :=
   {inf : X; is_inf : glb J inf}.
 Class HasSup `{Proset X} {R} (J : R -> X) :=
   {sup : X; is_sup : lub J sup}.
 Hint Mode HasInf ! - - ! ! : typeclass_instances.
 Hint Mode HasSup ! - - ! ! : typeclass_instances.
-Arguments inf {X _ _ R} J {_}.
-Arguments sup {X _ _ R} J {_}.
+Arguments inf {X _ _ R} J {Has} : rename.
+Arguments sup {X _ _ R} J {Has} : rename.
 Arguments is_inf {X _ _ R} J {_}.
 Arguments is_sup {X _ _ R} J {_}.
+(* TODO Figure out what kind of black magic is necessary for rewriting under an
+        inf or sup. *)
+Instance: Params (@inf) 6 := {}.
+Instance: Params (@sup) 6 := {}.
+Notation "'Inf' x .. y , p" := (inf (fun x => .. (inf (fun y => p)) ..))
+  (at level 200, x binder, right associativity,
+   format "'[' 'Inf'  '/  ' x  ..  y ,  '/  ' p ']'")
+  : proset_scope.
+Notation "'Sup' x .. y , p" := (sup (fun x => .. (sup (fun y => p)) ..))
+  (at level 200, x binder, right associativity,
+   format "'[' 'Sup'  '/  ' x  ..  y ,  '/  ' p ']'")
+  : proset_scope.
+
+Definition transport_inf `{Proset X} {R} {J J' : R -> X} (E : J ⟛ J') `{!HasInf J}
+  : HasInf J'
+  := {| inf := inf J;
+        is_inf := proj1 (glb_proper _ _ E _ _ (reflexivity _)) (is_inf J) |}.
+Definition transport_sup `{Proset X} {R} {J J' : R -> X} (E : J ⟛ J') `{!HasSup J}
+  : HasSup J'
+  := {| sup := sup J;
+        is_sup := proj1 (lub_proper _ _ E _ _ (reflexivity _)) (is_sup J) |}.
 
 (* TODO Lots of stuff! *)
 Definition inf_lb `{Proset X} {R} {J : R -> X} `{!HasInf J} : lower_bound J (inf J)
@@ -203,32 +259,6 @@ Proof.
   move=> *; split; first by apply: sup_left.
   move=> <-; apply: sup_ub.
 Qed.
-(*
-Definition InfsOfShape (R X : Type) `{!Proset R, !Proset X} : Type
-  := forall J : R -> X, Monotone J -> HasInf J.
-Definition SupsOfShape (R X : Type) `{!Proset R, !Proset X} : Type
-  := forall J : R -> X, Monotone J -> HasSup J.
-Definition DInfsOfShape (R X : Type) `{!Proset X} : Type
-  := forall J : R -> X, HasInf J.
-Definition DSupsOfShape (R X : Type) `{!Proset X} : Type
-  := forall J : R -> X, HasSup J.
-Existing Class InfsOfShape.
-Existing Class SupsOfShape.
-Existing Class DInfsOfShape.
-Existing Class DSupsOfShape.
-Hint Mode InfsOfShape ! ! - - : typeclass_instances.
-Hint Mode SupsOfShape ! ! - - : typeclass_instances.
-Hint Mode DInfsOfShape ! ! - : typeclass_instances.
-Hint Mode DSupsOfShape ! ! - : typeclass_instances.
-Instance ios_def `{IOS : InfsOfShape R X} {J : R -> X} `{!Monotone J} : HasInf J
-  := IOS J _.
-Instance sos_def `{SOS : SupsOfShape R X} {J : R -> X} `{!Monotone J} : HasSup J
-  := SOS J _.
-Instance dios_def `{DIOS : DInfsOfShape R X} {J : R -> X} : HasInf J
-  := DIOS J.
-Instance dsos_def `{DSOS : DSupsOfShape R X} {J : R -> X} : HasSup J
-  := DSOS J.
-*)
 
 Notation InfsOfShape R X := (forall J : R -> X, Monotone J -> HasInf J).
 Notation SupsOfShape R X := (forall J : R -> X, Monotone J -> HasSup J).
@@ -254,6 +284,14 @@ Arguments einf {_ _ _ _ _} J /.
 Arguments esup {_ _ _ _ _} J /.
 Instance: Params (@einf) 5 := {}.
 Instance: Params (@esup) 5 := {}.
+Notation "'EInf' x .. y , p" := (einf (fun x => .. (einf (fun y => p)) ..))
+  (at level 200, x binder, right associativity,
+   format "'[' 'EInf'  '/  ' x  ..  y ,  '/  ' p ']'")
+  : proset_scope.
+Notation "'ESup' x .. y , p" := (esup (fun x => .. (esup (fun y => p)) ..))
+  (at level 200, x binder, right associativity,
+   format "'[' 'ESup'  '/  ' x  ..  y ,  '/  ' p ']'")
+  : proset_scope.
 Instance inf_mono {R} `{Proset X, !DInfsOfShape R X}
   : Monotone (einf (X:=X) (R:=R)).
 Proof. move=> A B D /=; apply: inf_right => r; by apply: inf_left. Qed.
@@ -301,10 +339,10 @@ Lemma ub_diagram_spec `{Proset X} {R} {J : R -> X} {A}
   : glb (ub_diagram J) A <-> lub J A.
 Proof.
   split=> [Glb | Lub].
-  - pose HI := {| inf := A; is_inf := Glb |}; change A with (inf (ub_diagram J)); split.
+  - pose Has := {| inf := A; is_inf := Glb |}; change A with (inf (ub_diagram J)); split.
     + move=> r; apply: inf_right => -[B UB] //=.
     + move=> B UB; by apply: (inf_left (B ↾ UB)).
-  - pose HS := {| sup := A; is_sup := Lub |}; change A with (sup J); split.
+  - pose Has := {| sup := A; is_sup := Lub |}; change A with (sup J); split.
     + move=> [B UB]; apply: sup_left => r //=.
     + move=> B LB; apply/(LB (sup J ↾ _)); apply: sup_ub.
 Qed.
@@ -312,10 +350,10 @@ Lemma lb_diagram_spec `{Proset X} {R} {J : R -> X} {A}
   : lub (lb_diagram J) A <-> glb J A.
 Proof.
   split=> [Lub | Glb].
-  - pose HS := {| sup := A; is_sup := Lub |}; change A with (sup (lb_diagram J)); split.
+  - pose Has := {| sup := A; is_sup := Lub |}; change A with (sup (lb_diagram J)); split.
     + move=> r; apply: sup_left => -[B LB] //=.
     + move=> B LB; by apply: (sup_right (B ↾ LB)).
-  - pose HI := {| inf := A; is_inf := Glb |}; change A with (inf J); split.
+  - pose Has := {| inf := A; is_inf := Glb |}; change A with (inf J); split.
     + move=> [B LB]; apply: inf_right => r //=.
     + move=> B UB; apply: (UB (inf J ↾ _)); apply: inf_lb.
 Qed.
@@ -323,6 +361,31 @@ Definition infs_sufficient `{Proset X, !InfLattice X} : SupLattice X
   := fun R J => {| sup := inf (ub_diagram J); is_sup := proj1 ub_diagram_spec (is_inf _) |}.
 Definition sups_sufficient `{Proset X, !SupLattice X} : InfLattice X
   := fun R J => {| inf := sup (lb_diagram J); is_inf := proj1 lb_diagram_spec (is_sup _) |}.
+
+Lemma inf_binder_fwd `{Proset X} {R} {J J' : R -> X} `{!DInfsOfShape R X}
+  : (forall r, J r ⊢ J' r) -> inf J ⊢ inf J'.
+Proof. move=> D; apply: inf_right => r; apply: inf_left; by etransitivity. Qed.
+Lemma inf_binder_bwd `{Proset X} {R} {J J' : R -> X} `{!DInfsOfShape R X}
+  : (forall r, flip pro_le (J' r) (J r)) -> inf J ⊢ inf J'.
+Proof. apply: inf_binder_fwd. Qed.
+Lemma inf_binder `{Proset X} {R} {J J' : R -> X} `{!DInfsOfShape R X}
+  : (forall r, J r ⟛ J' r) -> inf J ⟛ inf J'.
+Proof. move=> D; split; apply: inf_binder_fwd; firstorder. Qed.
+Lemma sup_binder_fwd `{Proset X} {R} {J J' : R -> X} `{!DSupsOfShape R X}
+  : (forall r, J r ⊢ J' r) -> sup J ⊢ sup J'.
+Proof. move=> D; apply: sup_left => r; apply: sup_right; by etransitivity. Qed.
+Lemma sup_binder_bwd `{Proset X} {R} {J J' : R -> X} `{!DSupsOfShape R X}
+  : (forall r, flip pro_le (J' r) (J r)) -> sup J ⊢ sup J'.
+Proof. move=> /= D; apply: sup_left => r; apply: sup_right; by etransitivity. Qed.
+Lemma sup_binder `{Proset X} {R} {J J' : R -> X} `{!DSupsOfShape R X}
+  : (forall r, J r ⟛ J' r) -> sup J ⟛ sup J'.
+Proof. move=> D; split; apply: sup_binder_fwd; firstorder. Qed.
+
+Instance proset_rewrite' `{Proset X} : RewriteRelation (flip (pro_le (X:=X))) := {}.
+Instance under_proper `{PreOrder A R} : Proper (R --> R ++> impl) (Under_rel A R).
+Proof. rewrite Under_relE; firstorder. Qed.
+Instance under_proper' `{PreOrder A R} : Proper (R ++> R --> flip impl) (Under_rel A R).
+Proof. rewrite Under_relE; firstorder. Qed.
 
 Lemma inf_unique `{Proset X} {R} {A} {J : R -> X} `{!HasInf J}
   : glb J A <-> A ⟛ inf J.
@@ -340,6 +403,69 @@ Proof.
     (* TODO Why is rewrite hanging here?! *)
   - move=> E; apply/(least_proper _ _ proper_prf _ _ E); apply: is_sup.
 Qed.
+Lemma glb_alt `{Proset X} {R} {J : R -> X} {A}
+  : glb J A <-> forall `{!Proper ((⟛) ==> iff) P}, P A <-> forall `{!HasInf J}, P (inf J).
+Proof.
+  split.
+  - move=> Glb P ?; split.
+    + move=> PA ?; rewrite (greatest_unique (is_inf _) Glb) //.
+    + move=> /(_ {| inf := A; is_inf := Glb |}) //.
+  - move=> E; apply/E => ?; apply: is_inf.
+Qed.
+Lemma lub_alt `{Proset X} {R} {J : R -> X} {A}
+  : lub J A <-> forall `{!Proper ((⟛) ==> iff) P}, P A <-> forall `{!HasSup J}, P (sup J).
+Proof.
+  split.
+  - move=> Lub P ?; split.
+    + move=> PA ?; rewrite (least_unique (is_sup _) Lub) //.
+    + move=> /(_ {| sup := A; is_sup := Lub |}) //.
+  - move=> E; apply/E => ?; apply: is_sup.
+Qed.
+Lemma instantiate_inf `{Proset X, !Proper ((⟛) ==> iff) P} {R} {J : R -> X} `{!HasInf J}
+  : (forall `{Has' : !HasInf J}, P (inf J (Has:=Has'))) <-> P (inf J).
+Proof. symmetry; apply: (proj1 glb_alt (is_inf J)). Qed.
+Lemma instantiate_sup `{Proset X, !Proper ((⟛) ==> iff) P} {R} {J : R -> X} `{!HasSup J}
+  : (forall `{Has' : !HasSup J}, P (sup J (Has:=Has'))) <-> P (sup J).
+Proof. symmetry; apply: (proj1 lub_alt (is_sup J)). Qed.
+
+(*
+Definition same_inf `{Proset X} {R} {J J' : R -> X} : HasInf J -> HasInf J' -> Prop
+  := fun _ _ => inf J ⟛ inf J'.
+Definition same_sup `{Proset X} {R} {J J' : R -> X} : HasSup J -> HasSup J' -> Prop
+  := fun _ _ => sup J ⟛ sup J'.
+Arguments same_inf {_ _ _ _ _ _} _ _ /.
+Arguments same_sup {_ _ _ _ _ _} _ _ /.
+Instance: Params (@same_inf) 6 := {}.
+Instance: Params (@same_sup) 6 := {}.
+Instance same_inf_equivalence `{Proset X} {R} {J : R -> X}
+  : Equivalence (same_inf (J:=J) (J':=J)).
+Proof. constructor=> ? //= *; by etransitivity. Qed.
+Instance same_sup_equivalence `{Proset X} {R} {J : R -> X}
+  : Equivalence (same_sup (J:=J) (J':=J)).
+Proof. constructor=> ? //= *; by etransitivity. Qed.
+Notation inf_proof_irrel := (Proper (same_inf ==> iff)).
+Notation sup_proof_irrel := (Proper (same_sup ==> iff)).
+Lemma same_inf_endo_total `{Proset X} {R} {J : R -> X} (Has Has' : HasInf J)
+  : same_inf Has Has'.
+Proof. apply: greatest_unique; apply: is_inf. Qed.
+Lemma same_sup_endo_total `{Proset X} {R} {J : R -> X} (Has Has' : HasSup J)
+  : same_sup Has Has'.
+Proof. apply: least_unique; apply: is_sup. Qed.
+
+Lemma ipi_alt `{Proset X} {R} {J : R -> X} (P : HasInf J -> Prop)
+  : inf_proof_irrel P <-> (forall Has, all P <-> P Has).
+Proof.
+  split.
+  - move=> IPI Has; split=> // P_Has Has'.
+    rewrite (same_inf_endo_total Has' Has) //.
+  - move=> E Has Has'.
+    + done. move=> All.
+Qed.
+
+Lemma instantiate_inf' `{Proset X} {R} {J : R -> X} `{!HasInf J}
+  : (forall `{Has' : !HasInf J}, P (inf J (Has:=Has'))) <-> P (inf J).
+Proof. symmetry; apply: (proj1 glb_alt (is_inf J)). Qed.
+*)
 
 Program Instance pw_inf {X} `{Proset Y} {R} {J : R -> X -> Y} `{!forall x, HasInf (flip J x)}
   : HasInf J
@@ -390,8 +516,8 @@ Program Instance prod_inf `{Proset X, Proset Y} {R} {J : R -> X * Y}
   := {| inf := (inf (fst ∘ J), inf (snd ∘ J)) |}.
 Next Obligation.
   move=> ? ? ? ? ? ? ? J ? ?.
-  rewrite /greatest /pred_upper_bound curry_dep; setoid_rewrite (prod_lb (J:=J)); simpl.
-  setoid_rewrite inf_universal; firstorder.
+  rewrite /glb /greatest /pred_upper_bound curry_dep.
+  setoid_rewrite (prod_lb (J:=J)); simpl; setoid_rewrite inf_universal; firstorder.
 Qed.
 Program Instance prod_sup `{Proset X, Proset Y} {R} {J : R -> X * Y}
         `{!HasSup (fst ∘ J), !HasSup (snd ∘ J)}
@@ -399,11 +525,11 @@ Program Instance prod_sup `{Proset X, Proset Y} {R} {J : R -> X * Y}
   := {| sup := (sup (fst ∘ J), sup (snd ∘ J)) |}.
 Next Obligation.
   move=> ? ? ? ? ? ? ? J ? ?.
-  rewrite /least /pred_lower_bound curry_dep; setoid_rewrite (prod_ub (J:=J)); simpl.
-  setoid_rewrite sup_universal; firstorder.
+  rewrite /lub /least /pred_lower_bound curry_dep.
+  setoid_rewrite (prod_ub (J:=J)); simpl; setoid_rewrite sup_universal; firstorder.
 Qed.
 (*
-Lemma op_lb_ub : forall `{Proset X} {R},
+Lemma op_lb_ub `{Proset X} {R}
 *)
 
 Notation Top X := (DInfsOfShape void X).
@@ -416,14 +542,15 @@ Definition bot (X : Type) `{Proset X, !Bot X} : X :=
   sup (of_void _).
 Notation "⊤" := (top _) : proset_scope.
 Notation "⊥" := (bot _) : proset_scope.
+Notation bool_e A B := (fun b : bool => if b then A else B).
 Definition meet `{Proset X, !BinMeets X} (A B : X) : X :=
-  inf (fun b : bool => if b then A else B).
+  inf (bool_e A B).
 Definition join `{Proset X, !BinJoins X} (A B : X) : X :=
-  sup (fun b : bool => if b then A else B).
+  sup (bool_e A B).
 Infix "⩕" := meet (at level 40, left associativity) : proset_scope.
 Infix "⩖" := join (at level 40, left associativity) : proset_scope.
 (* TODO This type could technically be less strict... *)
-Definition embed_prop `{Complete X} (P : Prop) : X := sup (fun H : P => ⊤).
+Definition embed_prop `{Complete X} (P : Prop) : X := Sup H : P, ⊤.
 Notation "⌜ P ⌝" := (embed_prop P) : proset_scope.
 Arguments top : simpl never.
 Arguments bot : simpl never.
@@ -488,7 +615,7 @@ Program Definition build_meet_semilattice (X : Type) `{Proset X, !Top X, !BinMee
   := fun R _ _ J => {| inf := foldr meet ⊤ (map J (enum R)) |}.
 Next Obligation.
   move=> X ? ? ? ? R ? ? J.
-  rewrite /greatest /pred_upper_bound /lower_bound; setoid_rewrite <- Forall_finite.
+  rewrite /glb /greatest /pred_upper_bound /lower_bound; setoid_rewrite <- Forall_finite.
   elim: (enum R) => /= [| r rs [IH1 IH2]]; split.
   - done.
   - move=> *; apply: top_right.
@@ -502,7 +629,7 @@ Program Definition build_join_semilattice (X : Type) `{Proset X, !Bot X, !BinJoi
   := fun R _ _ J => {| sup := foldr join ⊥ (map J (enum R)) |}.
 Next Obligation.
   move=> X ? ? ? ? R ? ? J.
-  rewrite /least /pred_lower_bound /upper_bound; setoid_rewrite <- Forall_finite.
+  rewrite /lub /least /pred_lower_bound /upper_bound; setoid_rewrite <- Forall_finite.
   elim: (enum R) => /= [| r rs [IH1 IH2]]; split.
   - done.
   - move=> *; apply: bot_left.
@@ -546,7 +673,48 @@ Class PreservesSup `{Proset X, Proset Y} {R} (F : X -> Y) (J : R -> X) :=
   preserve_sup A : lub J A -> lub (F ∘ J) (F A).
 Hint Mode PreservesInf ! - - ! - - ! ! ! : typeclass_instances.
 Hint Mode PreservesSup ! - - ! - - ! ! ! : typeclass_instances.
-Lemma preserves_inf_alt1 `{Proset X, Proset Y} {R} {F : X -> Y} {J : R -> X}
+Lemma distrib_inf `{Proset X, Proset Y} {R} (J : R -> X)
+      {F : X -> Y} `{!PreservesInf F J} `{!HasInf J, !HasInf (F ∘ J)}
+  : F (Inf r, J r) ⟛ Inf r, F (J r).
+Proof. apply/inf_unique/preserve_inf/is_inf. Qed.
+Lemma distrib_sup `{Proset X, Proset Y} {R} (J : R -> X)
+      {F : X -> Y} `{!PreservesSup F J} `{!HasSup J, !HasSup (F ∘ J)}
+  : F (Sup r, J r) ⟛ Sup r, F (J r).
+Proof. apply/sup_unique/preserve_sup/is_sup. Qed.
+Definition preserves_inf_img `{Proset X, Proset Y} (F : X -> Y)
+           {R} (J : R -> X) `{!HasInf J, !PreservesInf F J}
+  : HasInf (F ∘ J)
+  := {| inf := F (inf J); is_inf := preserve_inf (inf J) (is_inf J) |}.
+Definition preserves_sup_img `{Proset X, Proset Y} (F : X -> Y)
+           {R} (J : R -> X) `{!HasSup J, !PreservesSup F J}
+  : HasSup (F ∘ J)
+  := {| sup := F (sup J); is_sup := preserve_sup (sup J) (is_sup J) |}.
+Lemma distrib_inf' `{Proset X, Proset Y} {R} (J : R -> X)
+      {F : X -> Y} `{!PreservesInf F J} `{!HasInf J}
+  : F (Inf r, J r) ⟛ @inf _ _ _ _ (fun r => F (J r)) (preserves_inf_img F J).
+Proof. apply/inf_unique/preserve_inf/is_inf. Qed.
+Lemma distrib_sup' `{Proset X, Proset Y} {R} (J : R -> X)
+      {F : X -> Y} `{!PreservesSup F J} `{!HasSup J}
+  : F (Sup r, J r) ⟛ @sup _ _ _ _ (fun r => F (J r)) (preserves_sup_img F J).
+Proof. apply/sup_unique/preserve_sup/is_sup. Qed.
+
+Lemma preserves_inf_alt `{Proset X, Proset Y} {R} {F : X -> Y} {J : R -> X}
+      `{!Monotone F}
+  : PreservesInf F J <-> forall `{!HasInf J}, glb (F ∘ J) (F (inf J)).
+Proof.
+  split.
+  - move=> ? ?; apply/preserve_inf/is_inf.
+  - move=> GlbF A Glb; apply: (GlbF {| inf := A; is_inf := Glb |}).
+Qed.
+Lemma preserves_sup_alt `{Proset X, Proset Y} {R} {F : X -> Y} {J : R -> X}
+      `{!Monotone F}
+  : PreservesSup F J <-> forall `{!HasSup J}, lub (F ∘ J) (F (sup J)).
+Proof.
+  split.
+  - move=> ? ?; apply/preserve_sup/is_sup.
+  - move=> LubF A Lub; apply: (LubF {| sup := A; is_sup := Lub |}).
+Qed.
+Lemma preserves_inf_alt2 `{Proset X, Proset Y} {R} {F : X -> Y} {J : R -> X}
       `{!Monotone F, !HasInf J}
   : PreservesInf F J <-> glb (F ∘ J) (F (inf J)).
 Proof.
@@ -555,7 +723,7 @@ Proof.
   - move=> Glb A /inf_unique E.
       by apply/(greatest_proper _ _ proper_prf); first rewrite E.
 Qed.
-Lemma preserves_sup_alt1 `{Proset X, Proset Y} {R} {F : X -> Y} {J : R -> X}
+Lemma preserves_sup_alt2 `{Proset X, Proset Y} {R} {F : X -> Y} {J : R -> X}
       `{!Monotone F, !HasSup J}
   : PreservesSup F J <-> lub (F ∘ J) (F (sup J)).
 Proof.
@@ -564,22 +732,14 @@ Proof.
   - move=> Lub A /sup_unique E.
       by apply/(least_proper _ _ proper_prf); first rewrite E.
 Qed.
-Lemma preserves_inf_alt2 `{Proset X, Proset Y} {R} {F : X -> Y} {J : R -> X}
+Lemma preserves_inf_alt3 `{Proset X, Proset Y} {R} {F : X -> Y} {J : R -> X}
       `{!Monotone F, !HasInf J, !HasInf (F ∘ J)}
-  : PreservesInf F J <-> F (inf J) ⟛ inf (fun r => F (J r)).
-Proof. rewrite preserves_inf_alt1; apply: inf_unique. Qed.
-Lemma preserves_sup_alt2 `{Proset X, Proset Y} {R} {F : X -> Y} {J : R -> X}
+  : PreservesInf F J <-> F (Inf r, J r) ⟛ Inf r, F (J r).
+Proof. rewrite preserves_inf_alt2; apply: inf_unique. Qed.
+Lemma preserves_sup_alt3 `{Proset X, Proset Y} {R} {F : X -> Y} {J : R -> X}
       `{!Monotone F, !HasSup J, !HasSup (F ∘ J)}
-  : PreservesSup F J <-> F (sup J) ⟛ sup (fun r => F (J r)).
-Proof. rewrite preserves_sup_alt1; apply: sup_unique. Qed.
-Lemma distrib_inf `{Proset X, Proset Y} {R} (J : R -> X)
-      {F : X -> Y} `{!PreservesInf F J} `{!HasInf J, !HasInf (F ∘ J)}
-  : F (inf J) ⟛ inf (fun r => F (J r)).
-Proof. apply/inf_unique/preserve_inf/is_inf. Qed.
-Lemma distrib_sup `{Proset X, Proset Y} {R} (J : R -> X)
-      {F : X -> Y} `{!PreservesSup F J} `{!HasSup J, !HasSup (F ∘ J)}
-  : F (sup J) ⟛ sup (fun r => F (J r)).
-Proof. apply/sup_unique/preserve_sup/is_sup. Qed.
+  : PreservesSup F J <-> F (Sup r, J r) ⟛ Sup r, F (J r).
+Proof. rewrite preserves_sup_alt2; apply: sup_unique. Qed.
 
 Notation PresInfsOfShape R F := (forall J, Monotone J -> PreservesInf (R:=R) F J).
 Notation PresSupsOfShape R F := (forall J, Monotone J -> PreservesSup (R:=R) F J).
@@ -594,18 +754,117 @@ Notation ScottContinuous F :=
 
 Lemma F_inf `{Proset X, Proset Y} {R} {F : X -> Y} {J : R -> X}
       `{!Monotone F, !HasInf J, !HasInf (F ∘ J)}
-  : F (inf J) ⊢ inf (fun r => F (J r)).
+  : F (Inf r, J r) ⊢ Inf r, F (J r).
 Proof. apply: inf_right => r; apply: mono; apply: inf_lb. Qed.
 Lemma F_sup `{Proset X, Proset Y} {R} {F : X -> Y} {J : R -> X}
       `{!Monotone F, !HasSup J, !HasSup (F ∘ J)}
-  : sup (fun r => F (J r)) ⊢ F (sup J).
+  : (Sup r, F (J r)) ⊢ F (Sup r, J r).
 Proof. apply: sup_left => r; apply: mono; apply: sup_ub. Qed.
-Lemma distrib_inf_sufficient `{Complete X, Complete Y} {F : X -> Y} `{!Monotone F}
-  : (forall {R} (J : R -> X), inf (F ∘ J) ⊢ F (inf J)) -> Continuous F.
-Proof. move=> Distr R J; apply/preserves_inf_alt2; split; [apply: F_inf | apply: Distr]. Qed.
-Lemma distrib_sup_sufficient `{Complete X, Complete Y} {F : X -> Y} `{!Monotone F}
-  : (forall {R} (J : R -> X), F (sup J) ⊢ sup (F ∘ J)) -> Cocontinuous F.
-Proof. move=> Distr R J; apply/preserves_sup_alt2; split; [apply: Distr | apply: F_sup]. Qed.
+Lemma distrib_inf_sufficient `{Proset X, Proset Y} {R} (J : R -> X)
+      {F : X -> Y} `{!Monotone F, !HasInf J, !HasInf (F ∘ J)}
+  : (Inf r, F (J r)) ⊢ F (Inf r, J r) -> PreservesInf F J.
+Proof. move=> Distr; apply/preserves_inf_alt3; split; [apply: F_inf | apply: Distr]. Qed.
+Lemma distrib_sup_sufficient `{Proset X, Proset Y} {R} (J : R -> X)
+      {F : X -> Y} `{!Monotone F, !HasSup J, !HasSup (F ∘ J)}
+  : F (Sup r, J r) ⊢ (Sup r, F (J r)) -> PreservesSup F J.
+Proof. move=> Distr; apply/preserves_sup_alt3; split; [apply: Distr | apply: F_sup]. Qed.
+
+Lemma bool_diagram_eta `{Proset X} (J : bool -> X)
+  : J ⟛ bool_e (J true) (J false).
+Proof. apply/pw_core' => -[] //. Qed.
+Lemma bool_interval `{Proset X} (J : bool -> X)
+  : Monotone J <-> J false ⊢ J true.
+Proof.
+  split.
+  - move=> ?; by apply: mono.
+  - move=> D [] [] //.
+Qed.
+Lemma bool_interval' `{Proset X} (A B : X)
+  : A ⊢ B <-> Monotone (bool_e B A).
+Proof. symmetry; apply: bool_interval. Qed.
+Program Instance interval_inf `{Proset X} : InfsOfShape bool X
+  := fun J _ => {| inf := J false |}.
+Next Obligation. move=> X ? ? J /bool_interval D; split=> [[] | A] //. Qed.
+Program Instance interval_sup `{Proset X} : SupsOfShape bool X
+  := fun J _ => {| sup := J true |}.
+Next Obligation. move=> X ? ? J /bool_interval D; split=> [[] | A] //. Qed.
+Lemma mono_as_pres_infs `{Proset X, Proset Y} {F : X -> Y}
+  : Monotone F <-> PresInfsOfShape bool F.
+Proof.
+  split.
+  - move=> ? J ?; by apply: distrib_inf_sufficient.
+  - move=> Pres A B /bool_interval'; set J := bool_e B A => ?.
+    change A with (inf J); rewrite distrib_inf' (inf_lb true) //.
+Qed.
+Lemma mono_as_pres_sups `{Proset X, Proset Y} {F : X -> Y}
+  : Monotone F <-> PresSupsOfShape bool F.
+Proof.
+  split.
+  - move=> ? J ?; by apply: distrib_sup_sufficient.
+  - move=> Pres A B /bool_interval'; set J := bool_e B A => ?.
+    change B with (sup J); rewrite -(proj2 (distrib_sup' _)) -(sup_ub false) //.
+Qed.
+
+(* TODO Non-on-the-nose surjectivity *)
+Lemma reindex_glb `{Proset X} {R R'} (re : R -> R') `{!Surj (=) re} {J : R' -> X} {A}
+  : glb J A -> glb (J ∘ re) A.
+Proof.
+  move=> [LB Uni]; split.
+  - firstorder.
+  - move=> A' LB'; apply: Uni => r'.
+    case: (surj re r') => r <-; apply: LB'.
+Qed.
+Lemma reindex_lub `{Proset X} {R R'} (re : R -> R') `{!Surj (=) re} {J : R' -> X} {A}
+  : lub J A -> lub (J ∘ re) A.
+Proof.
+  move=> [UB Uni]; split.
+  - firstorder.
+  - move=> A' UB'; apply: Uni => r'.
+    case: (surj re r') => r <-; apply: UB'.
+Qed.
+Lemma unreindex_glb `{Proset X} {R R'} (re : R -> R') `{!Surj (=) re} {J : R' -> X} {A}
+  : glb (J ∘ re) A -> glb J A.
+Proof.
+  move=> [LB Uni]; split.
+  - move=> r'.
+    case: (surj re r') => r <-; apply: LB.
+  - firstorder.
+Qed.
+Lemma unreindex_lub `{Proset X} {R R'} (re : R -> R') `{!Surj (=) re} {J : R' -> X} {A}
+  : lub (J ∘ re) A -> lub J A.
+Proof.
+  move=> [UB Uni]; split.
+  - move=> r'.
+    case: (surj re r') => r <-; apply: UB.
+  - firstorder.
+Qed.
+Lemma reindex_inf `{Proset X} {R R'} (re : R -> R') `{!Surj (=) re} {J : R' -> X}
+      `{!HasInf J, !HasInf (J ∘ re)}
+  : inf J ⟛ inf (J ∘ re).
+Proof. apply/inf_unique/reindex_glb/is_inf. Qed.
+Lemma reindex_sup `{Proset X} {R R'} (re : R -> R') `{!Surj (=) re} {J : R' -> X}
+      `{!HasSup J, !HasSup (J ∘ re)}
+  : sup J ⟛ sup (J ∘ re).
+Proof. apply/sup_unique/reindex_lub/is_sup. Qed.
+
+(*
+Lemma lex_alt `{Proset X, Proset Y} (F : X -> Y) `{!Monotone F}
+  : PresDInfsOfShape void F -> PresDInfsOfShape bool F -> Lex F.
+Proof.
+  move=> Base Step.
+  enough (forall n, PresDInfsOfShape (fin n) F). {
+    move=> R ? ? J A.
+    have ? : Surj (=) (decode_fin (A:=R)) by apply/cancel_surj/decode_encode_fin.
+    move=> /(reindex_glb decode_fin) /(preserve_inf (F:=F) A).
+    apply: unreindex_glb.
+  }
+  elim.
+  - have ? : Surj (=) (of_void (fin 0)) by move=> x; case: (Fin.case0 (const False) x).
+    move=> J A /(reindex_glb (of_void _)) /(preserve_inf (F:=F) A).
+    apply: unreindex_glb.
+  - move=> n IH J A.
+Abort.
+*)
 
 (* A number of continuity results are over in adjunction.v, because they drop out
    for free from adjunctions that we were proving anyway. *)
@@ -630,67 +889,62 @@ Instance compose_continuous `{Proset X, Proset Y, Proset Z'} {F : Y -> Z'} {G : 
   : Continuous (F ∘ G) | 0.
 Proof. typeclasses eauto. Qed.
 *)
-Instance subst_continuous1 {Y Y'} `{Complete X} {f : Y' -> Y}
+Instance precomp_continuous {Y Y'} `{Complete X} {f : Y' -> Y}
   : Continuous (fun g : Y -> X => g ∘ f).
-Proof. by apply/distrib_inf_sufficient. Qed.
-Instance subst_cocontinuous1 {Y Y'} `{Complete X} {f : Y' -> Y}
+Proof. move=> ? ?; by apply/distrib_inf_sufficient. Qed.
+Instance precomp_cocontinuous {Y Y'} `{Complete X} {f : Y' -> Y}
   : Cocontinuous (fun g : Y -> X => g ∘ f).
-Proof. by apply/distrib_sup_sufficient. Qed.
+Proof. move=> ? ?; by apply/distrib_sup_sufficient. Qed.
 Instance eval_at_continuous {X} `{Complete Y} {x : X} : Continuous (eval_at (Y:=Y) x).
-Proof. by apply/distrib_inf_sufficient. Qed.
+Proof. move=> ? ?; by apply/distrib_inf_sufficient. Qed.
 Instance eval_at_cocontinuous {X} `{Complete Y} {x : X}
   : Cocontinuous (eval_at (Y:=Y) x).
-Proof. by apply/distrib_sup_sufficient. Qed.
+Proof. move=> ? ?; by apply/distrib_sup_sufficient. Qed.
 
-Lemma reflecting_reflects_inf `{Proset X, Proset Y} {F : X -> Y}
-      `{!Monotone F, !Reflecting F} {R} (J : R -> X) A
-  : glb (F ∘ J) (F A) -> glb J A.
-Proof.
-  move=> Glb; split=> [r | A' LB].
-  - apply: (reflect F); apply: (proj1 Glb).
-  - apply: (reflect F); apply: (proj2 Glb) => r /=; by apply: mono.
-Qed.
-Lemma reflecting_reflects_sup `{Proset X, Proset Y} {F : X -> Y}
-      `{!Monotone F, !Reflecting F} {R} (J : R -> X) A
-  : lub (F ∘ J) (F A) -> lub J A.
-Proof.
-  move=> Lub; split=> [r | A' UB].
-  - apply: (reflect F); apply: (proj1 Lub).
-  - apply: (reflect F); apply: (proj2 Lub) => r /=; by apply: mono.
-Qed.
-Lemma reflecting_undistrib_inf `{Proset X, Proset Y} {F : X -> Y}
-      `{!Monotone F, !Reflecting F} {R} (J : R -> X) `{!HasInf (F ∘ J)} A
-  : F A ⟛ inf (F ∘ J) -> glb J A.
-Proof. move=> /inf_unique; apply: reflecting_reflects_inf. Qed.
-Lemma reflecting_undistrib_sup `{Proset X, Proset Y} {F : X -> Y}
-      `{!Monotone F, !Reflecting F} {R} (J : R -> X) `{!HasSup (F ∘ J)} A
-  : F A ⟛ sup (F ∘ J) -> lub J A.
-Proof. move=> /sup_unique; apply: reflecting_reflects_sup. Qed.
-
-(*
-Instance lex_def `{Proset X, Proset Y} {F : X -> Y} `{!Lex F} `{Finite R} {J : R -> X}
-  : PreservesInf F J := preserve_inf.
-*)
-Lemma distrib_top `{Proset X, Proset Y, !Top X, !Top Y} {F : X -> Y} `{!Lex F}
+Lemma distrib_top `{Proset X, Proset Y, !Top X, !Top Y} {F : X -> Y}
+      `{!PresDInfsOfShape void F}
   : F ⊤ ⟛ ⊤.
 Proof. rewrite distrib_inf; by apply: (mono_core einf); apply/pw_core'. Qed.
-Lemma distrib_bot `{Proset X, Proset Y, !Bot X, !Bot Y} {F : X -> Y} `{!Rex F}
+Lemma distrib_bot `{Proset X, Proset Y, !Bot X, !Bot Y} {F : X -> Y}
+      `{!PresDSupsOfShape void F}
   : F ⊥ ⟛ ⊥.
 Proof. rewrite distrib_sup; by apply: (mono_core esup); apply/pw_core'. Qed.
 Lemma distrib_meet `{Proset X, Proset Y, !BinMeets X, !BinMeets Y}
-      {F : X -> Y} `{!Lex F} {A B}
+      {F : X -> Y} `{!PresDInfsOfShape bool F} {A B}
   : F (A ⩕ B) ⟛ F A ⩕ F B.
 Proof. rewrite distrib_inf; apply: (mono_core einf); apply/pw_core' => -[] //. Qed.
 Lemma distrib_join `{Proset X, Proset Y, !BinJoins X, !BinJoins Y}
-      {F : X -> Y} `{!Rex F} {A B}
+      {F : X -> Y} `{!PresDSupsOfShape bool F} {A B}
   : F (A ⩖ B) ⟛ F A ⩖ F B.
 Proof. rewrite distrib_sup; apply: (mono_core esup); apply/pw_core' => -[] //. Qed.
 Lemma distrib_embed_prop `{Complete X, Complete Y} {F : X -> Y}
-      `{!Lex F, !Cocontinuous F} {P}
+      {P : Prop} `{!PresDInfsOfShape void F, !PresDSupsOfShape P F} 
   : F (⌜ P ⌝) ⟛ ⌜ P ⌝.
 Proof.
   rewrite distrib_sup; apply: (mono_core esup); apply/pw_core' => H_P /=.
   apply: distrib_top.
+Qed.
+
+Lemma F_top `{Proset X, Proset Y, !Top X, !Top Y} {F : X -> Y}
+  : F ⊤ ⊢ ⊤.
+Proof. apply: top_right. Qed.
+Lemma F_bot `{Proset X, Proset Y, !Bot X, !Bot Y} {F : X -> Y}
+  : ⊥ ⊢ F ⊥.
+Proof. apply: bot_left. Qed.
+Lemma F_meet `{Proset X, Proset Y, !BinMeets X, !BinMeets Y}
+      {F : X -> Y} `{!Monotone F} {A B}
+  : F (A ⩕ B) ⊢ F A ⩕ F B.
+Proof. apply: meet_right; [rewrite meet_proj1 // | rewrite meet_proj2 //]. Qed.
+Lemma F_join `{Proset X, Proset Y, !BinJoins X, !BinJoins Y}
+      {F : X -> Y} `{!Monotone F} {A B}
+  : F A ⩖ F B ⊢ F (A ⩖ B).
+Proof. apply: join_left; [rewrite -join_inj1 // | rewrite -join_inj2 //]. Qed.
+Lemma F_embed_prop `{Complete X, Complete Y} {F : X -> Y}
+      `{!Monotone F, !PresDInfsOfShape void F} {P}
+  : ⌜ P ⌝ ⊢ F (⌜ P ⌝).
+Proof.
+  apply: embed_prop_left => H_P.
+  rewrite /embed_prop -(sup_ub H_P) -(proj2 distrib_top) //.
 Qed.
 
 Program Instance Hom_inf `{Proset X, Proset Y} {R} {J : R -> Hom X Y}
@@ -722,41 +976,41 @@ Qed.
 (* TODO Make some of the subsequent stuff more fine-grained. *)
 Instance ap_Hom_complete_continuous `{Proset X, Complete Y}
   : Continuous (ap_Hom (X:=X) (Y:=Y)).
-Proof. by apply/distrib_inf_sufficient. Qed.
+Proof. move=> ? ?; by apply/distrib_inf_sufficient. Qed.
 Instance ap_Hom_complete_cocontinuous `{Proset X, Complete Y}
   : Cocontinuous (ap_Hom (X:=X) (Y:=Y)).
-Proof. by apply/distrib_sup_sufficient. Qed.
+Proof. move=> ? ?; by apply/distrib_sup_sufficient. Qed.
 (* Hmm. *)
 Instance flip_functoriality {R} `{Proset Y, Proset X}
          {F : R -> Y -> X} `{!forall r, Monotone (F r)}
   : Monotone (flip F).
 Proof. firstorder. Qed.
-Lemma Hom_lim : forall `{Proset Y, Complete X} {R} (J : R -> Hom Y X),
-    inf J ⟛ in_Hom (einf ∘ flip J).
-Proof. by compute. Qed.
-Lemma Hom_colim : forall `{Proset Y, Complete X} {R} (J : R -> Hom Y X),
-    inf J ⟛ in_Hom (einf ∘ flip J).
-Proof. by compute. Qed.
+Lemma Hom_lim `{Proset X, Complete Y} {R} (J : R -> Hom X Y)
+  : inf J ⟛ in_Hom (einf ∘ flip J).
+Proof. generalize dependent X; generalize dependent Y; by compute. Qed.
+Lemma Hom_colim `{Proset X, Complete Y} {R} (J : R -> Hom X Y)
+  : inf J ⟛ in_Hom (einf ∘ flip J).
+Proof. generalize dependent X; generalize dependent Y; by compute. Qed.
 Instance Hom_compose_continuous `{Proset X, Proset X', Complete Y} {F : Hom X' X}
   : Continuous (fun G : Hom X Y => G ○ F).
 Proof.
-  apply: distrib_inf_sufficient.
+  move=> R J; apply: distrib_inf_sufficient.
   - move=> G G'; apply: (bi_l Hom_compose).
-  - move=> R J A /=; apply: (mono einf) => ? //=.
+  - move=> A /=; apply: (mono einf) => ? //=.
 Qed.
 Instance Hom_compose_cocontinuous `{Proset X, Proset X', Complete Y} {F : Hom X' X}
   : Cocontinuous (fun G : Hom X Y => G ○ F).
 Proof.
-  apply: distrib_sup_sufficient.
+  move=> R J; apply: distrib_sup_sufficient.
   - move=> G G'; apply: (bi_l Hom_compose).
-  - move=> R J A /=; apply: (mono esup) => ? //=.
+  - move=> A /=; apply: (mono esup) => ? //=.
 Qed.
 Instance Hom_eval_at_continuous `{Proset X, Complete Y} {x : X}
   : Continuous (Hom_eval_at (Y:=Y) x).
-Proof. by apply: distrib_inf_sufficient. Qed.
+Proof. move=> ? ?; by apply: distrib_inf_sufficient. Qed.
 Instance Hom_eval_at_cocontinuous `{Proset X, Complete Y} {x : X}
   : Cocontinuous (Hom_eval_at (Y:=Y) x).
-Proof. by apply: distrib_sup_sufficient. Qed.
+Proof. move=> ? ?; by apply: distrib_sup_sufficient. Qed.
 
 
 (* Example *)
@@ -784,3 +1038,57 @@ Proof.
     + move=> D; unfold fixed_point in FP.
       rewrite -(proj1 FP); by apply: mono.
 Qed.
+
+
+Class ReflectsInf `{Proset X, Proset Y} {R} (F : X -> Y) (J : R -> X) :=
+  reflect_inf A : lower_bound J A -> glb (F ∘ J) (F A) -> glb J A.
+Hint Mode ReflectsInf ! - - ! - - ! ! ! : typeclass_instances.
+Arguments reflect_inf {_ _ _ _ _ _ _} F {_ _} A.
+
+Class LiftsInf `{Proset X, Proset Y} {R} (F : X -> Y) (J : R -> X) :=
+  lift_inf B : glb (F ∘ J) B -> {A | glb J A & F A ⟛ B}.
+Hint Mode LiftsInf ! - - ! - - ! ! ! : typeclass_instances.
+Arguments lift_inf {_ _ _ _ _ _ _} F {_ _} B.
+
+(*
+Lemma reflects_preserves `{Proset X, Proset Y} {F : X -> Y}
+      `{!Monotone F} {R} (J : R -> X) `{!HasInf (F ∘ J), !ReflectsInf F J}
+  : image F (inf (F ∘ J)) -> PreservesInf F J.
+Proof.
+   move=> A Glb. apply/inf_unique.
+Qed.
+
+Lemma undistrib_inf `{Proset X, Proset Y} {F : X -> Y}
+      `{!Monotone F} {R} (J : R -> X) `{!HasInf J, !HasInf (F ∘ J), !ReflectsInf F J} A
+  : F A ⟛ inf (F ∘ J) -> A ⟛ inf J.
+Proof. move=> /inf_unique Glb. apply/inf_unique. apply: (reflect_inf A). ; apply: reflecting_reflects_inf. Qed.
+Lemma reflecting_undistrib_sup `{Proset X, Proset Y} {F : X -> Y}
+      `{!Monotone F, !Reflecting F} {R} (J : R -> X) `{!HasSup (F ∘ J)} A
+  : F A ⟛ sup (F ∘ J) -> lub J A.
+Proof. move=> /sup_unique; apply: reflecting_reflects_sup. Qed.
+*)
+
+Lemma reflecting_reflects_inf `{Proset X, Proset Y} {F : X -> Y}
+      `{!Monotone F, !Reflecting F} {R} (J : R -> X) A
+  : glb (F ∘ J) (F A) -> glb J A.
+Proof.
+  move=> Glb; split=> [r | A' LB].
+  - apply: (reflect F); apply: (proj1 Glb).
+  - apply: (reflect F); apply: (proj2 Glb) => r /=; by apply: mono.
+Qed.
+Lemma reflecting_reflects_sup `{Proset X, Proset Y} {F : X -> Y}
+      `{!Monotone F, !Reflecting F} {R} (J : R -> X) A
+  : lub (F ∘ J) (F A) -> lub J A.
+Proof.
+  move=> Lub; split=> [r | A' UB].
+  - apply: (reflect F); apply: (proj1 Lub).
+  - apply: (reflect F); apply: (proj2 Lub) => r /=; by apply: mono.
+Qed.
+Lemma reflecting_undistrib_inf `{Proset X, Proset Y} {F : X -> Y}
+      `{!Monotone F, !Reflecting F} {R} (J : R -> X) `{!HasInf (F ∘ J)} A
+  : F A ⟛ inf (F ∘ J) -> glb J A.
+Proof. move=> /inf_unique; apply: reflecting_reflects_inf. Qed.
+Lemma reflecting_undistrib_sup `{Proset X, Proset Y} {F : X -> Y}
+      `{!Monotone F, !Reflecting F} {R} (J : R -> X) `{!HasSup (F ∘ J)} A
+  : F A ⟛ sup (F ∘ J) -> lub J A.
+Proof. move=> /sup_unique; apply: reflecting_reflects_sup. Qed.

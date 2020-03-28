@@ -431,13 +431,14 @@ Instance sym_lclosed `{Sym X T, !Closed T H'} : LClosed T H' | 3.
 Proof. move=> A B C; rewrite -tensor_hom; split=> ?; by rewrite sym. Qed.
 Instance sym_lcmset `{SymMonSet X, !ClosedMonSet X} : LClosedMonSet X | 3
   := {| l_internal_hom := internal_hom |}.
+Definition l_meet_exponential `{Exponents X} : LClosed (X:=X) meet exponential
+  := _.
 
 (*
-Instance: Params (@pro_tens) 2 := {}.
 Instance internal_hom_di `{ClosedMonSet X} : Dimonotone (internal_hom (X:=X)).
 Proof.
   move=> A A' /= D1 B B' D2; rewrite -tensor_hom.
-  pose proof (@pro_tens_bi X H H0) as Pr.
+  pose proof (@pro_tens_bi X le0 H H0) as Pr.
   Unset Printing Notations.
   Set Printing Implicit.
   assert (B' ⊢ A' ⊗ A') as Z by give_up.
@@ -483,3 +484,7 @@ Proof.
   apply/meet_exponential; apply: embed_prop_left => ?.
   apply/meet_exponential; rewrite meet_proj2; by apply: D2.
 Qed.
+
+Class HeytingAlgebra (X : Type) `{Lattice X, !Exponents X}.
+Hint Mode HeytingAlgebra ! - - - - - - : typeclass_instances.
+Instance heytingalgebra_def `{Lattice X, !Exponents X} : HeytingAlgebra X := {}.

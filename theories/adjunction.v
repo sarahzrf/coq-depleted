@@ -47,6 +47,15 @@ Proof.
   - rewrite (proj2 (E_F _ _ (E_G _ _ _))) //; apply: (adj_counit Adj).
 Qed.
 
+Class OrderEquiv `{Proset X, Proset Y} (F : X -> Y) (G : Y -> X)
+      `{!F ⊣ G, !G ⊣ F, !Monotone F, !Monotone G}.
+Hint Mode OrderEquiv ! - - ! - - ! - - - - - : typeclass_instances.
+Hint Mode OrderEquiv ! - - ! - - - ! - - - - : typeclass_instances.
+Instance order_equiv_reflecting1 `{OrderEquiv X Y F G} : Reflecting F.
+Proof. move=> A B /transpose D; apply: (transitivity D); apply: (adj_counit (F:=G)). Qed.
+Instance order_equiv_reflecting2 `{OrderEquiv X Y F G} : Reflecting G.
+Proof. move=> A B /transpose D; apply: (transitivity D); apply: (adj_counit (F:=F)). Qed.
+
 Lemma reflecting_left_adjoint `(Adj : Adjoint X Y F G) `{!Reflecting F} : G ∘ F ⟛ id.
 Proof.
   split=> A /=.
@@ -93,31 +102,33 @@ Proof.
   enough (F ∘ G ∘ J ⟛ J) as E by (rewrite -E; apply: preserve_sup Lub).
   apply/pw_core' => r /=; apply/(pw_core (reflecting_right_adjoint Adj)).
 Qed.
-(* TODO be more fine-grained *)
-Definition reflective_suplattice
-           `{Adjoint X Y F G, !Monotone F, !Monotone G, !Reflecting G, !SupLattice X}
-  : SupLattice Y
-  := fun R J => {| sup := F (sup (G ∘ J));
-                is_sup := reflecting_right_adjoint_lub (is_sup (G ∘ J)) |}.
+(* TODO be more fine-grained? *)
+Definition reflective_dsups {R}
+           `{Adjoint X Y F G, !Monotone F, !Monotone G, !Reflecting G,
+             !DSupsOfShape R X}
+  : DSupsOfShape R Y
+  := fun J => {| sup := F (sup (G ∘ J));
+              is_sup := reflecting_right_adjoint_lub (is_sup (G ∘ J)) |}.
 (*
 Definition reflective_inflattice
            `{Adjoint X Y F G, !Monotone F, !Montone G, !Reflecting G, !SupLattice X}
   : InfLattice Y
   := @sups_sufficient Y _ (reflective_suplattice (F:=F) (G:=G)).
 *)
-Definition coreflective_inflattice
-           `{Adjoint Y X F G, !Monotone F, !Monotone G, !Reflecting F, !InfLattice X}
-  : InfLattice Y
-  := fun R J => {| inf := G (inf (F ∘ J));
-                is_inf := reflecting_left_adjoint_glb (is_inf (F ∘ J)) |}.
+Definition coreflective_dinfs {R}
+           `{Adjoint Y X F G, !Monotone F, !Monotone G, !Reflecting F,
+             !DInfsOfShape R X}
+  : DInfsOfShape R Y
+  := fun J => {| inf := G (inf (F ∘ J));
+              is_inf := reflecting_left_adjoint_glb (is_inf (F ∘ J)) |}.
 
 (* TOO Comma prosets? *)
 Definition universal_left_adjoint `{Proset X, Proset Y, !InfLattice Y}
            (G : Y -> X) (A : X) : Y
-  := inf (fun B : {B0 | A ⊢ G B0} => `B).
+  := Inf B : {B0 | A ⊢ G B0}, `B.
 Definition universal_right_adjoint `{Proset X, Proset Y, !SupLattice X}
            (F : X -> Y) (B : Y) : X
-  := sup (fun A : {A0 | F A0 ⊢ B} => `A).
+  := Sup A : {A0 | F A0 ⊢ B}, `A.
 Arguments universal_left_adjoint {_ _ _ _ _ _ _} G A /.
 Arguments universal_right_adjoint {_ _ _ _ _ _ _} F B /.
 Instance: Params (@universal_left_adjoint) 7 := {}.
@@ -144,7 +155,7 @@ Lemma universal_adjunction1 `{Proset X, Proset Y, !InfLattice Y}
   : universal_left_adjoint G ⊣ G.
 Proof.
   constructor=> [A | B] /=.
-  - case: (proj1 (preserves_inf_alt1 (F:=G) (J:=fun B : {B0 | A ⊢ G B0} => `B))) => LB Uni.
+  - case: (proj1 (preserves_inf_alt2 (F:=G) (J:=fun B : {B0 | A ⊢ G B0} => `B))) => LB Uni.
     apply/Uni => -[B0 ?] //.
   - by apply: (inf_lb (B ↾ _)).
 Qed.
@@ -154,17 +165,24 @@ Lemma universal_adjunction2 `{Proset X, Proset Y, !SupLattice X}
 Proof.
   constructor=> [A | B] /=.
   - by apply: (sup_ub (A ↾ _)).
-  - case: (proj1 (preserves_sup_alt1 (F:=F) (J:=fun A : {A0 | F A0 ⊢ B} => `A))) => UB Uni.
+  - case: (proj1 (preserves_sup_alt2 (F:=F) (J:=fun A : {A0 | F A0 ⊢ B} => `A))) => UB Uni.
     apply/Uni => -[B0 ?] //.
 Qed.
 
 Instance id_id_adjoint `{Proset X} : (@id X) ⊣ id.
 Proof. done. Qed.
+Instance id_id_equiv `{Proset X} : OrderEquiv (@id X) id := {}.
 Instance compose_adjoint `{Proset X, Proset Y, Proset Z'}
          {F : Y -> Z'} {G : Z' -> Y} {F' : X -> Y} {G' : Y -> X}
          `{!F ⊣ G, !F' ⊣ G', !Monotone F, !Monotone G, !Monotone F', !Monotone G'}
   : F ∘ F' ⊣ G' ∘ G.
 Proof. apply/transpose_sufficient => * /=; rewrite 2!transpose //. Qed.
+Instance compose_equiv `{Proset X, Proset Y, Proset Z'}
+         {F : Y -> Z'} {G : Z' -> Y} {F' : X -> Y} {G' : Y -> X}
+         `{!F ⊣ G, !G ⊣ F, !F' ⊣ G', !G' ⊣ F',
+           !Monotone F, !Monotone G, !Monotone F', !Monotone G',
+           !OrderEquiv F G, !OrderEquiv G F}
+  : OrderEquiv (F ∘ F') (G' ∘ G) := {}.
 Instance pair0_snd_adjoint `{Proset X, Proset Y, !Bot X}
   : pair ⊥ ⊣ (@snd X Y).
 Proof. constructor=> [B | [A B]] //=; by split; first apply: bot_left. Qed.
@@ -177,9 +195,9 @@ Proof. constructor=> [B | [A B]] //=; by split; last apply: bot_left. Qed.
 Instance fst_flip_pair1_adjoint `{Proset X, Proset Y, !Top Y}
   : (@fst X Y) ⊣ flip pair ⊤.
 Proof. constructor=> [[A B] | B] //=; by split; last apply: top_right. Qed.
-Instance const_einf_adjoint `{Proset X, !InfLattice X} {R} : @const X R ⊣ einf.
+Instance const_einf_adjoint {R} `{Proset X, !DInfsOfShape R X} : @const X R ⊣ einf.
 Proof. apply/transpose_sufficient => A B; rewrite -inf_universal //. Qed.
-Instance esup_const_adjoint `{Proset X, !SupLattice X} {R} : esup ⊣ @const X R.
+Instance esup_const_adjoint {R} `{Proset X, !DSupsOfShape R X} : esup ⊣ @const X R.
 Proof. apply/transpose_sufficient => A B; rewrite -sup_universal //. Qed.
 
 Lemma left_adjoint_unique `{Proset X, Proset Y} {F F' : X -> Y} {G : Y -> X}
@@ -318,7 +336,7 @@ Qed.
 
 Program Definition universal_lan {X} `{Proset X', Proset Y, !SupLattice Y}
         (p : X -> X') (F : X -> Y) : Hom X' Y
-  := fun x' => sup (fun y : {y0 | p y0 ⊢ x'} => F (`y)).
+  := fun x' => Sup y : {y0 | p y0 ⊢ x'}, F (`y).
 Next Obligation.
   move=> X X' ? ? Y ? ? ? p F A B D.
   apply: sup_left => -[x D'] /=.
@@ -328,7 +346,7 @@ Arguments universal_lan {_ _ _ _ _ _ _ _} p F /.
 Instance: Params (@universal_lan) 8 := {}.
 Program Definition universal_ran {X} `{Proset X', Proset Y, !InfLattice Y}
         (p : X -> X') (F : X -> Y) : Hom X' Y
-  := fun x' => inf (fun y : {y0 | x' ⊢ p y0} => F (`y)).
+  := fun x' => Inf y : {y0 | x' ⊢ p y0}, F (`y).
 Next Obligation.
   move=> X X' ? ? Y ? ? ? p F A B D.
   apply: inf_right => -[x D'] /=.

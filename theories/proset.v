@@ -74,6 +74,7 @@ Notation Bimonotone := (Proper (⥤)).
 Notation Dimonotone := (Proper (⇋)).
 
 Notation Reflecting := (Inj (⊢) (⊢)).
+Notation Antireflecting := (Inj (flip (⊢)) (⊢)).
 
 Lemma mono {X Y} `{Proset X, Proset Y} (F : X -> Y) `{!Monotone F} {A B}
   : A ⊢ B -> F A ⊢ F B.
@@ -106,6 +107,9 @@ Proof. move=> *; by apply: di. Qed.
 Lemma reflect `{Proset X, Proset Y} (F : X -> Y) `{!Reflecting F} {A B}
   : F A ⊢ F B -> A ⊢ B.
 Proof. firstorder. Qed.
+Lemma antireflect `{Proset X, Proset Y} (F : X -> Y) `{!Antireflecting F} {A B}
+  : F B ⊢ F A -> A ⊢ B.
+Proof. firstorder. Qed.
 
 Instance monotone_extensional `{Proset X, Proset Y} {F : X -> Y} `{!Monotone F}
   : Extensional F.
@@ -124,25 +128,28 @@ Instance compose_proper'' {A B C} {RA : relation A} {RB : relation B} {RC : rela
   : Proper ((RB --> RC) ++> (RA --> RB) --> RA ++> RC) compose.
 Proof. typeclasses eauto. Qed.
 
-(*
-Class Monotone `{Proset X, Proset Y} (F : X -> Y) :=
-  mono : forall {A B}, A ⊢ B -> F A ⊢ F B.
-Hint Mode Monotone ! - ! - ! : typeclass_instances.
-Class Reflecting `{Proset X, Proset Y} (F : X -> Y) :=
-  reflect : forall {A B}, F A ⊢ F B -> A ⊢ B.
-Hint Mode Reflecting ! - ! - ! : typeclass_instances.
-*)
-
 Lemma embed `{Proset X, Proset Y} (F : X -> Y) `{!Monotone F, !Reflecting F} {A B}
   : F A ⊢ F B <-> A ⊢ B.
 Proof. firstorder. Qed.
+Lemma antiembed `{Proset X, Proset Y} (F : X -> Y) `{!Antitone F, !Antireflecting F} {A B}
+  : F B ⊢ F A <-> A ⊢ B.
+Proof. firstorder. Qed.
 Lemma mono_core `{Proset X, Proset Y} (F : X -> Y) `{!Monotone F} {A B}
+  : A ⟛ B -> F A ⟛ F B.
+Proof. firstorder. Qed.
+Lemma anti_core `{Proset X, Proset Y} (F : X -> Y) `{!Antitone F} {A B}
   : A ⟛ B -> F A ⟛ F B.
 Proof. firstorder. Qed.
 Lemma reflect_core `{Proset X, Proset Y} (F : X -> Y) `{!Reflecting F} {A B}
   : F A ⟛ F B -> A ⟛ B.
 Proof. firstorder. Qed.
+Lemma antireflect_core `{Proset X, Proset Y} (F : X -> Y) `{!Antireflecting F} {A B}
+  : F A ⟛ F B -> A ⟛ B.
+Proof. firstorder. Qed.
 Lemma embed_core `{Proset X, Proset Y} (F : X -> Y) `{!Monotone F, !Reflecting F} {A B}
+  : F A ⟛ F B <-> A ⟛ B.
+Proof. firstorder. Qed.
+Lemma antiembed_core `{Proset X, Proset Y} (F : X -> Y) `{!Monotone F, !Reflecting F} {A B}
   : F A ⟛ F B <-> A ⟛ B.
 Proof. firstorder. Qed.
 (* TODO Why arent't these automatic?! *)
@@ -335,6 +342,7 @@ Proof. move=> a b c; unfold sig_rel; by etransitivity. Qed.
 Instance sig_symmetric `{Symmetric X R} {P} : Symmetric (sig_rel R P).
 Proof. by compute. Qed.
 Instance sig_le `{Le X} {P : X -> Prop} : Le (sig P) := sig_rel (⊢) P.
+Arguments sig_le {_ _ _} /.
 Instance sig_proset `{Proset X} {P : X -> Prop} : Proset (sig P).
 Proof. constructor; typeclasses eauto. Defined.
 (* TODO Think this one over. *)
@@ -388,6 +396,7 @@ Proof. firstorder. Qed.
 
 Definition Hom (X Y : Type) `{Proset X, Proset Y} : Type :=
   @sig (X -> Y) Monotone.
+(* TODO Fix the brittleness with rewriting by Hom inequalities. *)
 Definition ap_Hom (X Y : Type) `{Proset X, Proset Y} : Hom X Y -> X -> Y
   := sval.
 Arguments ap_Hom {_ _ _ _ _ _} !_.
@@ -427,7 +436,7 @@ Instance: Params (@Hom_id) 3 := {}.
 Instance: Params (@Hom_compose) 9 := {}.
 Instance Hom_compose_bi `{Proset X, Proset Y, Proset Z'}
   : Bimonotone (Hom_compose (X:=X) (Y:=Y) (Z':=Z')).
-Proof. move=> f g /= D f' g' D' x /=; rewrite D D' //. Qed.
+Proof. move=> f g D f' g' D' x /=; rewrite D D' //. Qed.
 Lemma Hom_id_lident `{Proset X, Proset Y} {F : Hom X Y}
   : Hom_id ○ F ⟛ F.
 Proof. compute; by fold (pro_le (X:=Y)). Qed.
