@@ -74,18 +74,22 @@ Proof.
   move=> P1 P2 D_P A1 A2 D_A U B /D_P ?.
   rewrite -D_A; by apply: U.
 Qed.
+(*
 Instance pred_lower_bound_proper' `{Proset X}
   : Proper ((⊢) ++> (⊢) ++> flip impl) (pred_lower_bound (X:=X)).
 Proof. move=> ? ? ? ? ? ?; by apply: pred_lower_bound_proper. Qed.
+*)
 Instance pred_lower_bound_proper'' `{Proset X}
   : Proper ((⟛) ==> (⥊)) (pred_lower_bound (X:=X)).
 Proof.
   apply: proper_sym_impl_iff_2 => ? ? [D ?] ? ? [D' ?] ?.
     by apply: pred_lower_bound_proper.
 Qed.
+(*
 Instance pred_upper_bound_proper' `{Proset X}
   : Proper ((⊢) ++> (⊢) --> flip impl) (pred_upper_bound (X:=X)).
 Proof. move=> ? ? ? ? ? ?; by apply: pred_upper_bound_proper. Qed.
+*)
 Instance pred_upper_bound_proper'' `{Proset X}
   : Proper ((⟛) ==> (⥊)) (pred_upper_bound (X:=X)).
 Proof.
@@ -191,12 +195,6 @@ Instance lub_proper `{Proset X} {R}
 Proof.
   move=> ? ? E1 ? ? E2; rewrite /lub E1; apply/(least_proper _ _ proper_prf _ _ E2).
 Qed.
-Instance glb_proper' `{Proset X} {R}
-  : Proper ((⟛) --> (⟛) --> flip iff) (glb (X:=X) (R:=R)).
-Proof. move=> ? ? E1 ? ? E2; by apply: glb_proper. Qed.
-Instance lub_proper' `{Proset X} {R}
-  : Proper ((⟛) --> (⟛) --> flip iff) (lub (X:=X) (R:=R)).
-Proof. move=> ? ? E1 ? ? E2; by apply: lub_proper. Qed.
 
 Class HasInf `{Proset X} {R} (J : R -> X) :=
   {inf : X; is_inf : glb J inf}.
@@ -384,8 +382,10 @@ Proof. move=> D; split; apply: sup_binder_fwd; firstorder. Qed.
 Instance proset_rewrite' `{Proset X} : RewriteRelation (flip (pro_le (X:=X))) := {}.
 Instance under_proper `{PreOrder A R} : Proper (R --> R ++> impl) (Under_rel A R).
 Proof. rewrite Under_relE; firstorder. Qed.
+(*
 Instance under_proper' `{PreOrder A R} : Proper (R ++> R --> flip impl) (Under_rel A R).
 Proof. rewrite Under_relE; firstorder. Qed.
+*)
 
 Lemma inf_unique `{Proset X} {R} {A} {J : R -> X} `{!HasInf J}
   : glb J A <-> A ⟛ inf J.

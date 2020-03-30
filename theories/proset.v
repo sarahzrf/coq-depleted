@@ -27,6 +27,7 @@ Hint Mode Proset ! - : typeclass_instances.
 Instance pro_le_pro `{Proset X} : PreOrder (pro_le (X:=X)).
 Proof. done. Qed.
 Instance proset_rewrite `{Proset X} : RewriteRelation (pro_le (X:=X)) := {}.
+Typeclasses Opaque flip.
 
 Definition core_rel {X} (R : X -> X -> Prop) : X -> X -> Prop := fun a1 a2 => R a1 a2 /\ R a2 a1.
 (* TODO Maybe it's bad to block rewriting in R? That could be confusing if we ever
@@ -45,7 +46,7 @@ Infix "⟛" := pro_core (no associativity, at level 70) : proset_scope.
 Notation "(⟛)" := pro_core (only parsing) : proset_scope.
 Instance pro_core_sub1 `{Proset X} : @subrelation X (⟛) (⊢). (* | 10. *)
 Proof. firstorder. Qed.
-Instance pro_core_sub2 `{Proset X} : @subrelation X (⟛) (⊢). (* | 10. *)
+Instance pro_core_sub2 `{Proset X} : @subrelation X (⟛) (flip (⊢)). (* | 10. *)
 Proof. firstorder. Qed.
 Lemma core_eq {X} {R : X -> X -> Prop} `{!Antisymmetric X (=) R} {A B} :
   core_rel R A B -> A = B.
@@ -116,7 +117,7 @@ Instance monotone_extensional `{Proset X, Proset Y} {F : X -> Y} `{!Monotone F}
 Proof. firstorder. Qed.
 Instance antitone_extensional `{Proset X, Proset Y} {F : X -> Y} `{!Antitone F}
   : Extensional F.
-Proof. move=> ? ? [? ?]; split; by apply: anti. Qed.
+Proof. firstorder. Qed.
 Instance extensional_flipped `{Proset X, Proset Y} {F : X -> Y} `{!Extensional F}
   : Proper ((⟛) --> (⟛)) F.
 Proof. move=> ? ? [? ?]; split; by apply ext. Qed.
@@ -126,7 +127,7 @@ Instance compose_proper' {A B C} {RA : relation A} {RB : relation B} {RC : relat
 Proof. move=> ? ? ? ? ? H; by apply: compose_proper; last apply/flip_respectful. Qed.
 Instance compose_proper'' {A B C} {RA : relation A} {RB : relation B} {RC : relation C}
   : Proper ((RB --> RC) ++> (RA --> RB) --> RA ++> RC) compose.
-Proof. typeclasses eauto. Qed.
+Proof. move=> ? ? ? ? ? H; by apply: compose_proper'. Qed.
 
 Lemma embed `{Proset X, Proset Y} (F : X -> Y) `{!Monotone F, !Reflecting F} {A B}
   : F A ⊢ F B <-> A ⊢ B.
@@ -152,24 +153,6 @@ Proof. firstorder. Qed.
 Lemma antiembed_core `{Proset X, Proset Y} (F : X -> Y) `{!Monotone F, !Reflecting F} {A B}
   : F A ⟛ F B <-> A ⟛ B.
 Proof. firstorder. Qed.
-(* TODO Why arent't these automatic?! *)
-Instance monotone_proper' `{Proset X, Proset Y} {F : X -> Y} `{!Monotone F}
-  : Proper ((⊢) --> flip (⊢)) F.
-Proof. firstorder. Qed.
-Instance antitone_proper' `{Proset X, Proset Y} {F : X -> Y} `{!Antitone F}
-  : Proper ((⊢) ++> flip (⊢)) F.
-Proof. firstorder. Qed.
-Instance extensional_proper' `{Proset X, Proset Y} {F : X -> Y} `{!Extensional F}
-  : Proper ((⟛) ==> flip (⟛)) F.
-Proof. firstorder. Qed.
-Instance bimonotone_proper' `{Proset X, Proset Y, Proset Z'} {F : X -> Y -> Z'}
-         `{!Bimonotone F}
-  : Proper ((⊢) --> (⊢) --> flip (⊢)) F.
-Proof. move=> ? ? ? ? ? ? /=; firstorder. Qed.
-Instance dimonotone_proper' `{Proset X, Proset Y, Proset Z'} {F : X -> Y -> Z'}
-         `{!Dimonotone F}
-  : Proper ((⊢) ++> (⊢) --> flip (⊢)) F.
-Proof. move=> ? ? ? ? ? ? /=; firstorder. Qed.
 
 (* Basic kinds of proset. *)
 

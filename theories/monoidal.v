@@ -275,15 +275,13 @@ Proof. constructor; constructor=> // As Bs; rewrite fmap_app //. Qed.
 Definition tens_all `{MonSet X} : list X -> X
   := foldr pro_tens memp.
 Instance: Params (@tens_all) 4 := {}.
-(*
 Instance tens_all_mono `{MonSet X} : Monotone (tens_all (X:=X)).
-Proof. move=> ? ?; elim=> //= A B As Bs D _ IH; rewrite D; by rewrite IH. Qed.
-*)
+Proof. move=> ? ?; elim=> //= A B As Bs D _ IH; rewrite D IH //. Qed.
 Instance tens_all_strongmon `{MonSet X} : StrongMon (tens_all (X:=X)).
 Proof.
   constructor; constructor=> //; elim=> /= [| A As IH] Bs.
   - rewrite {2}/pro_tens /= pro_lunit //.
-  - rewrite -pro_massoc; by apply: bi; last apply/IH.
+  - rewrite -pro_massoc IH //.
   - rewrite {1}/pro_tens /=; apply pro_lunit.
   - rewrite -(proj1 (pro_massoc _ _ _)); by apply: bi; last apply/IH.
 Qed.
@@ -302,31 +300,29 @@ Proof.
   - split; apply: bi; firstorder.
 Qed.
 Instance tens_all'_mono `{MonSet X} : Monotone (tens_all' (X:=X)).
-Proof.
-  move=> *; rewrite tens_all'_alt; rewrite -(proj2 tens_all'_alt); apply: mono.
-Abort.
-(*
+Proof. move=> *; rewrite !tens_all'_alt; by apply: mono. Qed.
 Instance tens_all'_strongmon `{MonSet X} : StrongMon (tens_all' (X:=X)).
 Proof.
   constructor; constructor=> // *.
-  - rewrite 2!tens_all'_alt; setoid_rewrite <- (proj2 tens_all'_alt); apply/pres_tens.
-  - rewrite tens_all'_alt; setoid_rewrite <- (proj2 tens_all'_alt); apply/pres_tens_op.
+  - rewrite 2!(proj1 tens_all'_alt) -(proj2 tens_all'_alt); apply: pres_tens.
+  - rewrite tens_all'_alt -2!(proj2 tens_all'_alt); apply: pres_tens_op.
 Qed.
 Definition list_flat {X} `{MonSet Y} (F : X -> Y) : list X -> Y
   := tens_all' ∘ fmap F.
 Definition list_sharp {X Y} (F : list X -> Y) : X -> Y
   := F ∘ mret.
-Fact list_flat_signature `{Proset X, MonSet Y} {F : list X -> Y} `{!Functor F}
-  : TCAnd (Functor (list_flat F)) (StrongMon (list_flat F)).
-Proof. typeclasses eauto. Qed.
-Fact list_sharp_signature `{Proset X, MonSet Y} {F : list X -> Y} `{!Functor F, !StrongMon F}
-  : Functor (list_sharp F).
-Proof. typeclasses eauto. Qed.
-Lemma list_free_monoid1 : forall `{Proset X, MonSet Y} {F : list X -> Y} `{!StrongMon F},
-    list_flat (list_sharp F) ⟛ F.
+Fact list_flat_signature `{Proset X, MonSet Y} {F : list X -> Y} `{!Monotone F}
+  : TCAnd (Monotone (list_flat F)) (StrongMon (list_flat F)).
+Proof. unfold list_flat; typeclasses eauto. Qed.
+Fact list_sharp_signature `{Proset X, MonSet Y} {F : list X -> Y}
+     `{!Monotone F, !StrongMon F}
+  : Monotone (list_sharp F).
+Proof. unfold list_sharp; typeclasses eauto. Qed.
+Lemma list_free_monoid1 `{Proset X, MonSet Y} {F : list X -> Y} `{!StrongMon F}
+  : list_flat (list_sharp F) ⟛ F.
 Proof.
-  move=> X ? Y ? ? F ?; apply/pw_core' => As.
-  rewrite /list_flat; setoid_rewrite tens_all'_alt.
+  apply/pw_core' => As.
+  rewrite /list_flat /= tens_all'_alt.
   elim: As => /= [| A As IH].
   - rewrite /list_flat /list_sharp /=; split.
     + apply: (pres_memp (F:=F)).
@@ -334,13 +330,12 @@ Proof.
   - rewrite /list_flat /list_sharp /= -/fmap.
     change (A :: As) with (mret A ⊗ As).
     split.
-    + setoid_rewrite <- pres_tens; apply bimap; firstorder.
-    + setoid_rewrite pres_tens_op; apply bimap; firstorder.
+    + rewrite -pres_tens (proj1 IH) //.
+    + rewrite pres_tens_op (proj2 IH) //.
 Qed.
 Lemma list_free_monoid2 : forall {X} `{MonSet Y} {F : X -> Y},
     list_sharp (list_flat F) ⟛ F.
 Proof. split=> ? //=; apply pro_runit. Qed.
-*)
 
 
 Class MonClosed `{MonSet X} (P : X -> Prop) :=
@@ -434,20 +429,21 @@ Instance sym_lcmset `{SymMonSet X, !ClosedMonSet X} : LClosedMonSet X | 3
 Definition l_meet_exponential `{Exponents X} : LClosed (X:=X) meet exponential
   := _.
 
-(*
 Instance internal_hom_di `{ClosedMonSet X} : Dimonotone (internal_hom (X:=X)).
 Proof.
-  move=> A A' /= D1 B B' D2; rewrite -tensor_hom.
-  pose proof (@pro_tens_bi X le0 H H0) as Pr.
-  Unset Printing Notations.
-  Set Printing Implicit.
-  assert (B' ⊢ A' ⊗ A') as Z by give_up.
-  Set Typeclasses Debug Verbosity 10.  Fail Timeout 5 setoid_rewrite D1 in Z at 2.
-  evar (HHH : Proset X).
-  ; setoid_rewrite <- D2; rewrite tensor_hom //.
-  move=>
+  move=> A A' /= D1 B B' D2.
+  rewrite -tensor_hom D1 -D2 tensor_hom //.
 Qed.
-*)
+Instance l_internal_hom_di `{LClosedMonSet X} : Dimonotone (l_internal_hom (X:=X)).
+Proof.
+  move=> A A' /= D1 B B' D2.
+  rewrite -l_tensor_hom D1 -D2 l_tensor_hom //.
+Qed.
+Instance exponential_di `{Exponents X} : Dimonotone (exponential (X:=X)).
+Proof.
+  move=> A A' /= D1 B B' D2.
+  rewrite -tensor_hom D1 -D2 tensor_hom //.
+Qed.
 
 Program Instance prop_cmset : ClosedMonSet Prop
   := {| internal_hom (P Q : Prop) := P -> Q |}.
