@@ -290,10 +290,10 @@ Notation "'ESup' x .. y , p" := (esup (fun x => .. (esup (fun y => p)) ..))
   (at level 200, x binder, right associativity,
    format "'[' 'ESup'  '/  ' x  ..  y ,  '/  ' p ']'")
   : proset_scope.
-Instance inf_mono {R} `{Proset X, !DInfsOfShape R X}
+Instance einf_mono {R} `{Proset X, !DInfsOfShape R X}
   : Monotone (einf (X:=X) (R:=R)).
 Proof. move=> A B D /=; apply: inf_right => r; by apply: inf_left. Qed.
-Instance sup_mono {R} `{Proset X, !DSupsOfShape R X}
+Instance esup_mono {R} `{Proset X, !DSupsOfShape R X}
   : Monotone (esup (X:=X) (R:=R)).
 Proof. move=> A B D /=; apply: sup_left => r; by apply: sup_right. Qed.
 
@@ -550,7 +550,7 @@ Definition join `{Proset X, !BinJoins X} (A B : X) : X :=
 Infix "⩕" := meet (at level 40, left associativity) : proset_scope.
 Infix "⩖" := join (at level 40, left associativity) : proset_scope.
 (* TODO This type could technically be less strict... *)
-Definition embed_prop `{Complete X} (P : Prop) : X := Sup H : P, ⊤.
+Definition embed_prop `{Proset X, !SupLattice X, !Top X} (P : Prop) : X := Sup H : P, ⊤.
 Notation "⌜ P ⌝" := (embed_prop P) : proset_scope.
 Arguments top : simpl never.
 Arguments bot : simpl never.
@@ -561,7 +561,7 @@ Instance: Params (@top) 4 := {}.
 Instance: Params (@bot) 4 := {}.
 Instance: Params (@meet) 4 := {}.
 Instance: Params (@join) 4 := {}.
-Instance: Params (@embed_prop) 6 := {}.
+Instance: Params (@embed_prop) 5 := {}.
 
 Definition top_right `{Proset X, !Top X} {A : X} : A ⊢ ⊤ :=
   inf_right (Empty_set_ind _).
@@ -589,10 +589,10 @@ Definition join_right2 `{Proset X, !BinJoins X} {C A B : X} : C ⊢ B -> C ⊢ A
 Definition join_left `{Proset X, !BinJoins X} {A B C : X} (D1 : A ⊢ C) (D2 : B ⊢ C)
   : A ⩖ B ⊢ C
   := sup_left (fun b => if b as b0 return (if b0 then A else B) ⊢ C then D1 else D2).
-Lemma embed_prop_left `{Complete X} {P : Prop} {Q : X}
+Lemma embed_prop_left `{Proset X, !SupLattice X, !Top X} {P : Prop} {Q : X}
   : (P -> ⊤ ⊢ Q) -> ⌜ P ⌝ ⊢ Q.
 Proof. move=> D; by apply: sup_left. Qed.
-Lemma embed_prop_right `{Complete X} {P : X} {Q : Prop}
+Lemma embed_prop_right `{Proset X, !SupLattice X, !Top X} {P : X} {Q : Prop}
   : Q -> P ⊢ ⌜ Q ⌝.
 Proof. move=> *; apply: sup_right; apply: top_right. Qed.
 Instance meet_bi `{Proset X, !BinMeets X} : Bimonotone (meet (X:=X)).
@@ -607,7 +607,7 @@ Proof.
   + by apply: join_right1.
   + by apply: join_right2.
 Qed.
-Instance embed_prop_mono `{Complete X} : Monotone (embed_prop (X:=X)).
+Instance embed_prop_mono `{Proset X, !SupLattice X, !Top X} : Monotone (embed_prop (X:=X)).
 Proof. move=> P Q D; apply: embed_prop_left => ?; by apply embed_prop_right, D. Qed.
 
 Program Definition build_meet_semilattice (X : Type) `{Proset X, !Top X, !BinMeets X}
@@ -847,25 +847,6 @@ Lemma reindex_sup `{Proset X} {R R'} (re : R -> R') `{!Surj (=) re} {J : R' -> X
   : sup J ⟛ sup (J ∘ re).
 Proof. apply/sup_unique/reindex_lub/is_sup. Qed.
 
-(*
-Lemma lex_alt `{Proset X, Proset Y} (F : X -> Y) `{!Monotone F}
-  : PresDInfsOfShape void F -> PresDInfsOfShape bool F -> Lex F.
-Proof.
-  move=> Base Step.
-  enough (forall n, PresDInfsOfShape (fin n) F). {
-    move=> R ? ? J A.
-    have ? : Surj (=) (decode_fin (A:=R)) by apply/cancel_surj/decode_encode_fin.
-    move=> /(reindex_glb decode_fin) /(preserve_inf (F:=F) A).
-    apply: unreindex_glb.
-  }
-  elim.
-  - have ? : Surj (=) (of_void (fin 0)) by move=> x; case: (Fin.case0 (const False) x).
-    move=> J A /(reindex_glb (of_void _)) /(preserve_inf (F:=F) A).
-    apply: unreindex_glb.
-  - move=> n IH J A.
-Abort.
-*)
-
 (* A number of continuity results are over in adjunction.v, because they drop out
    for free from adjunctions that we were proving anyway. *)
 Instance id_continuous `{Proset X} : Continuous (@id X).
@@ -917,7 +898,8 @@ Lemma distrib_join `{Proset X, Proset Y, !BinJoins X, !BinJoins Y}
       {F : X -> Y} `{!PresDSupsOfShape bool F} {A B}
   : F (A ⩖ B) ⟛ F A ⩖ F B.
 Proof. rewrite distrib_sup; apply: (mono_core esup); apply/pw_core' => -[] //. Qed.
-Lemma distrib_embed_prop `{Complete X, Complete Y} {F : X -> Y}
+Lemma distrib_embed_prop `{Proset X, !SupLattice X, !Top X,
+                           Proset Y, !SupLattice Y, !Top Y} {F : X -> Y}
       {P : Prop} `{!PresDInfsOfShape void F, !PresDSupsOfShape P F} 
   : F (⌜ P ⌝) ⟛ ⌜ P ⌝.
 Proof.
@@ -939,12 +921,63 @@ Lemma F_join `{Proset X, Proset Y, !BinJoins X, !BinJoins Y}
       {F : X -> Y} `{!Monotone F} {A B}
   : F A ⩖ F B ⊢ F (A ⩖ B).
 Proof. apply: join_left; [rewrite -join_inj1 // | rewrite -join_inj2 //]. Qed.
-Lemma F_embed_prop `{Complete X, Complete Y} {F : X -> Y}
+Lemma F_embed_prop `{Proset X, !SupLattice X, !Top X,
+                     Proset Y, !SupLattice Y, !Top Y} {F : X -> Y}
       `{!Monotone F, !PresDInfsOfShape void F} {P}
   : ⌜ P ⌝ ⊢ F (⌜ P ⌝).
 Proof.
   apply: embed_prop_left => H_P.
   rewrite /embed_prop -(sup_ub H_P) -(proj2 distrib_top) //.
+Qed.
+
+
+Lemma lex_alt `{Proset X, !MeetSemilattice X, Proset Y} (F : X -> Y) `{!Monotone F}
+  : PresDInfsOfShape void F -> PresDInfsOfShape bool F -> Lex F.
+Proof.
+  move=> Base Step.
+  enough (forall n, PresDInfsOfShape (fin n) F). {
+    move=> R ? ? J A.
+    have ? : Surj (=) (decode_fin (A:=R)) by apply/cancel_surj/decode_encode_fin.
+    move=> /(reindex_glb decode_fin) /(preserve_inf (F:=F) A).
+    apply: unreindex_glb.
+  }
+  elim=> [| n IH] J; apply/preserves_inf_alt2.
+  - have ? : Surj (=) (of_void (fin 0)) by move=> x; case: (Fin.case0 (const False) x).
+    rewrite reindex_inf distrib_inf'; apply/(unreindex_glb (of_void _))/is_inf.
+  - split=> [? | B LB]; first by rewrite inf_lb /=.
+    rewrite (_ : inf J ⟛ J Fin.F1 ⩕ inf (J ∘ FS)).
+    + rewrite distrib_inf'; apply: inf_right => -[]; first by apply: LB.
+      rewrite distrib_inf'; apply: inf_right => ?; apply: LB.
+    + split; first apply: meet_right.
+      * apply: inf_lb.
+      * apply: inf_right => ?; apply: inf_lb.
+      * apply: inf_right => r; elim/(Fin.caseS' (n:=n)): r => [| r].
+        -- apply: meet_proj1.
+        -- apply: meet_left2; apply: inf_lb.
+Qed.
+Lemma rex_alt `{Proset X, !JoinSemilattice X, Proset Y} (F : X -> Y) `{!Monotone F}
+  : PresDSupsOfShape void F -> PresDSupsOfShape bool F -> Rex F.
+Proof.
+  move=> Base Step.
+  enough (forall n, PresDSupsOfShape (fin n) F). {
+    move=> R ? ? J A.
+    have ? : Surj (=) (decode_fin (A:=R)) by apply/cancel_surj/decode_encode_fin.
+    move=> /(reindex_lub decode_fin) /(preserve_sup (F:=F) A).
+    apply: unreindex_lub.
+  }
+  elim=> [| n IH] J; apply/preserves_sup_alt2.
+  - have ? : Surj (=) (of_void (fin 0)) by move=> x; case: (Fin.case0 (const False) x).
+    rewrite reindex_sup distrib_sup'; apply/(unreindex_lub (of_void _))/is_sup.
+  - split=> [? | B UB]; first by rewrite -sup_ub /=.
+    rewrite (_ : sup J ⟛ J Fin.F1 ⩖ sup (J ∘ FS)).
+    + rewrite distrib_sup'; apply: sup_left => -[]; first by apply: UB.
+      rewrite distrib_sup'; apply: sup_left => ?; apply: UB.
+    + split; last apply: join_left.
+      * apply: sup_left => r; elim/(Fin.caseS' (n:=n)): r => [| r].
+        -- apply: join_inj1.
+        -- apply: join_right2; apply: sup_ub.
+      * apply: sup_ub.
+      * apply: sup_left => ?; apply: sup_ub.
 Qed.
 
 Program Instance Hom_inf `{Proset X, Proset Y} {R} {J : R -> Hom X Y}
@@ -985,11 +1018,11 @@ Instance flip_functoriality {R} `{Proset Y, Proset X}
          {F : R -> Y -> X} `{!forall r, Monotone (F r)}
   : Monotone (flip F).
 Proof. firstorder. Qed.
-Lemma Hom_lim `{Proset X, Complete Y} {R} (J : R -> Hom X Y)
+Lemma Hom_inf_ `{Proset X, Complete Y} {R} (J : R -> Hom X Y)
   : inf J ⟛ in_Hom (einf ∘ flip J).
 Proof. generalize dependent X; generalize dependent Y; by compute. Qed.
-Lemma Hom_colim `{Proset X, Complete Y} {R} (J : R -> Hom X Y)
-  : inf J ⟛ in_Hom (einf ∘ flip J).
+Lemma Hom_sup_ `{Proset X, Complete Y} {R} (J : R -> Hom X Y)
+  : sup J ⟛ in_Hom (esup ∘ flip J).
 Proof. generalize dependent X; generalize dependent Y; by compute. Qed.
 Instance Hom_compose_continuous `{Proset X, Proset X', Complete Y} {F : Hom X' X}
   : Continuous (fun G : Hom X Y => G ○ F).
@@ -1005,10 +1038,10 @@ Proof.
   - move=> G G'; apply: (bi_l Hom_compose).
   - move=> A /=; apply: (mono esup) => ? //=.
 Qed.
-Instance Hom_eval_at_continuous `{Proset X, Complete Y} {x : X}
+Instance Hom_eval_at_continuous `{Proset X, Proset Y, !InfLattice Y} {x : X}
   : Continuous (Hom_eval_at (Y:=Y) x).
 Proof. move=> ? ?; by apply: distrib_inf_sufficient. Qed.
-Instance Hom_eval_at_cocontinuous `{Proset X, Complete Y} {x : X}
+Instance Hom_eval_at_cocontinuous `{Proset X, Proset Y, !SupLattice Y} {x : X}
   : Cocontinuous (Hom_eval_at (Y:=Y) x).
 Proof. move=> ? ?; by apply: distrib_sup_sufficient. Qed.
 

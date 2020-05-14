@@ -472,7 +472,8 @@ Proof. by rewrite meet_exponential. Qed.
 Lemma l_modus_ponens `{Exponents X} {A B : X}
   : A ⩕ (A ⟿ B) ⊢ B.
 Proof. rewrite (cartesian_sym A) meet_exponential //. Qed.
-Lemma prop_loop `{Complete X, !Exponents X} {P Q : X} {R : Prop}
+Lemma prop_loop `{Proset X, !SupLattice X, !MeetSemilattice X, !Exponents X}
+      {P Q : X} {R : Prop}
   : (P ⊢ embed_prop R) -> (R -> P ⊢ Q) -> P ⊢ Q.
 Proof.
   move=> D1 D2.

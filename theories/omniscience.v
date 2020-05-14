@@ -215,12 +215,14 @@ Proof. move: P Q => [P ?] [Q ?] /=; firstorder. Qed.
 Definition d2r : DProp -> RProp := dprop ↑.
 
 
+(* TODO Work with monotone stuff, not just extensional stuff! *)
 Class Markovian (R : Type) `{Proset R} :=
-  markov (P : R -> DProp) `{!Monotone P} : must_exist P -> exists r, P r.
+  markov (P : R -> DProp) `{!Monotone P} : ~(forall r, P r) -> exists r, ~P r.
 Class WeaklyOmniscient (R : Type) `{Proset R} :=
   weak_omniscience (P : R -> DProp) `{!Monotone P} : Decision (forall r, P r).
 Class Omniscient (R : Type) `{Proset R} :=
-  omniscience (P : R -> DProp) `{!Monotone P} : Decision (exists r, P r).
+  omniscience (P : R -> DProp) `{!Monotone P} : {forall r, P r} + {exists r, ~P r}.
+  (* omniscience (P : R -> DProp) `{!Monotone P} : Decision (exists r, P r). *)
 Hint Mode Markovian ! - - : typeclass_instances.
 Hint Mode WeaklyOmniscient ! - - : typeclass_instances.
 Hint Mode Omniscient ! - - : typeclass_instances.

@@ -118,9 +118,19 @@ Proof. firstorder. Qed.
 Instance antitone_extensional `{Proset X, Proset Y} {F : X -> Y} `{!Antitone F}
   : Extensional F.
 Proof. firstorder. Qed.
+Instance bimonotone_biextensional `{Proset X, Proset Y, Proset Z'}
+         {F : X -> Y -> Z'} `{!Bimonotone F}
+  : Proper ((⟛) ==> (⟛) ==> (⟛)) F.
+Proof. firstorder. Qed.
+Instance dimonotone_biextensional `{Proset X, Proset Y, Proset Z'}
+         {F : X -> Y -> Z'} `{!Dimonotone F}
+  : Proper ((⟛) ==> (⟛) ==> (⟛)) F.
+Proof. firstorder. Qed.
+(*
 Instance extensional_flipped `{Proset X, Proset Y} {F : X -> Y} `{!Extensional F}
   : Proper ((⟛) --> (⟛)) F.
 Proof. move=> ? ? [? ?]; split; by apply ext. Qed.
+*)
 
 Instance compose_proper' {A B C} {RA : relation A} {RB : relation B} {RC : relation C}
   : Proper ((RB --> RC) ++> (RA ++> RB) --> RA --> RC) compose.
@@ -377,6 +387,8 @@ Instance restrict_cod_ph_reflect `{Proset X, Proset Y} {F : X -> Y} `{!Reflectin
   : Reflecting (restrict_cod_ph ph F (H:=I)).
 Proof. firstorder. Qed.
 
+(* TODO Generalize this whole section to some kind of module parameterized
+        over classes other than just Monotone. *)
 Definition Hom (X Y : Type) `{Proset X, Proset Y} : Type :=
   @sig (X -> Y) Monotone.
 (* TODO Fix the brittleness with rewriting by Hom inequalities. *)

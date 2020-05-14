@@ -199,6 +199,18 @@ Instance const_einf_adjoint {R} `{Proset X, !DInfsOfShape R X} : @const X R ⊣ 
 Proof. apply/transpose_sufficient => A B; rewrite -inf_universal //. Qed.
 Instance esup_const_adjoint {R} `{Proset X, !DSupsOfShape R X} : esup ⊣ @const X R.
 Proof. apply/transpose_sufficient => A B; rewrite -sup_universal //. Qed.
+Definition is_top `{Proset X, !Top X} (A : X) : Prop := ⊤ ⊢ A.
+Arguments is_top {_ _ _ _} A.
+Instance: Params (@is_top) 4 := {}.
+Instance is_top_mono `{Proset X, !Top X} : Monotone (is_top (X:=X)).
+Proof. move=> A B; unfold is_top => -> //. Qed.
+Instance embed_prop_is_top_adj `{Proset X, !SupLattice X, !Top X}
+  : (embed_prop (X:=X)) ⊣ is_top.
+Proof.
+  apply: transpose_sufficient => A B; split.
+  - move=> <-; apply: embed_prop_right.
+  - apply: embed_prop_left.
+Qed.
 
 Lemma left_adjoint_unique `{Proset X, Proset Y} {F F' : X -> Y} {G : Y -> X}
       `{!F ⊣ G, !Monotone F, !Monotone F', !Monotone G}
