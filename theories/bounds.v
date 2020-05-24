@@ -313,9 +313,25 @@ Instance complete_def `{Proset X, !InfLattice X, !SupLattice X}
   : Complete X := {}.
 
 Class Directed (X : Type) `{Proset X} :=
-  direct `{Finite R} (J : R -> X) : exists A, upper_bound J A.
-Instance join_semilattice_directed `{Proset X, !JoinSemilattice X} : Directed X.
-Proof. move=> R ? ? J; exists (sup J); apply: sup_ub. Qed.
+  {direct `{Finite R} (J : R -> X) : X;
+   direct_is_ub `{Finite R} (J : R -> X) : upper_bound J (direct J)}.
+Hint Mode Directed ! - - : typeclass_instances.
+Class Codirected (X : Type) `{Proset X} :=
+  {codirect `{Finite R} (J : R -> X) : X;
+   codirect_is_lb `{Finite R} (J : R -> X) : lower_bound J (codirect J)}.
+Hint Mode Codirected ! - - : typeclass_instances.
+Instance join_semilattice_directed `{Proset X, !JoinSemilattice X}
+  : Directed X
+  := {| direct R _ _ J := sup J; direct_is_ub R _ _ J := sup_ub |}.
+Instance meet_semilattice_codirected `{Proset X, !MeetSemilattice X}
+  : Codirected X
+  := {| codirect R _ _ J := inf J; codirect_is_lb R _ _ J := inf_lb |}.
+Program Instance op_directed `{Codirected T} : Directed (op T)
+  := {| direct R _ _ J := codirect (get_op ∘ J);
+        direct_is_ub R _ _ J := codirect_is_lb J |}.
+Program Instance op_codirected `{Directed T} : Codirected (op T)
+  := {| codirect R _ _ J := direct (get_op ∘ J);
+        codirect_is_lb R _ _ J := direct_is_ub J |}.
 Notation DirectedComplete X := (forall `{Proset R}, Directed R -> SupsOfShape R X).
 
 Program Instance prop_inflattice {R} {J : R -> Prop} : HasInf J := {| inf := all J |}.
