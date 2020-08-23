@@ -173,6 +173,25 @@ Proof.
   rewrite instantiate_sup dprop_sup //.
 Qed.
 
+Instance decision_proper : CMorphisms.Proper
+  (CMorphisms.respectful iff (CRelationClasses.flip CRelationClasses.arrow))
+  Decision.
+Proof. firstorder. Defined.
+Lemma dprop_sup''1 {R} (J : R -> DProp)
+  : HasSup J -> Decision (must_exist J).
+Proof. move=> ?; rewrite -dprop_sup; apply: decide. Defined.
+Lemma dprop_sup''2 {R} (J : R -> DProp)
+  : Decision (must_exist J) -> HasSup J.
+Proof.
+  move=> Dec.
+  refine {| sup := in_DProp (must_exist J) |}.
+  case: (decide (must_exist J)); last by compute; firstorder.
+  rewrite /must_exist /= => ME; have : ~ ~ exists r, J r by firstorder.
+  apply: regular_bind => -[r J_r].
+  split; first by firstorder.
+  move=> A /(_ r J_r); firstorder.
+Defined.
+
 Definition RProp : Type := sig Regular.
 Coercion rprop := sval : RProp -> Prop.
 Arguments rprop !_ /.
@@ -226,3 +245,17 @@ Class Omniscient (R : Type) `{Proset R} :=
 Hint Mode Markovian ! - - : typeclass_instances.
 Hint Mode WeaklyOmniscient ! - - : typeclass_instances.
 Hint Mode Omniscient ! - - : typeclass_instances.
+
+Lemma WO_alt1 `{WeaklyOmniscient R} (J : R -> DProp) `{!Antitone J} : HasSup J.
+Proof.
+  have ? : Monotone (fun r => negd (J r)) by move=> P Q -> //.
+  apply/dprop_sup''2/not_dec/weak_omniscience.
+Defined.
+Lemma WO_alt2 `{Proset R} :
+  (forall (J : R -> DProp) `{!Antitone J}, HasSup J) -> WeaklyOmniscient R.
+Proof.
+  move=> Has J ?.
+  have : Decision (must_exist (negd ∘ J)) by apply/dprop_sup''1.
+  rewrite /must_exist /= => -[| NN]; first by right; firstorder.
+  do 2 setoid_rewrite dne' in NN; by left.
+Defined.

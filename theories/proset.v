@@ -475,6 +475,21 @@ Instance uncurry_proper `{Proset X, Proset Y, Proset Z'}
   : Proper ((⇀) ++> (⥤)) (@uncurry X Y Z').
 Proof. firstorder. Qed.
 
+Instance sum_relation_pro `{PreOrder X R, PreOrder Y R'}
+  : PreOrder (sum_relation R R').
+Proof. constructor; typeclasses eauto. Qed.
+Instance sum_le `{Le X, Le Y} : Le (X + Y) := sum_relation (⊢) (⊢).
+Arguments sum_le {_ _ _ _} !x !y /.
+Instance: Params (@sum_le) 4 := {}.
+Instance sum_proset `{Proset X, Proset Y} : Proset (X + Y) := {}.
+Instance inl_mono `{Proset X, Proset Y} : Monotone (@inl X Y).
+Proof. typeclasses eauto. Qed.
+Instance inr_mono `{Proset X, Proset Y} : Monotone (@inr X Y).
+Proof. typeclasses eauto. Qed.
+Instance sum_map_proper `{Proset X, Proset X', Proset Y, Proset Y'}
+  : Proper ((⇀) ++> (⇀) ++> (⇀)) (@sum_map X X' Y Y').
+Proof. move=> ? ? ? ? ? ? [? | ?] [? | ?] /=; inversion_clear 1; constructor; auto. Qed.
+
 Instance void_le : Le void := fun _ _ => True.
 Instance void_proset : Proset void.
 Proof. done. Qed.
@@ -502,6 +517,10 @@ Instance not_anti : Antitone not.
 Proof. firstorder. Qed.
 Instance impl_di : Dimonotone impl.
 Proof. firstorder. Qed.
+Lemma prop_unfold (P Q : Prop) : P ⊢ Q <-> (P -> Q).
+Proof. done. Qed.
+Lemma prop_core (P Q : Prop) : P ⟛ Q <-> (P <-> Q).
+Proof. done. Qed.
 
 Instance nat_le : Le nat := Nat.le.
 Instance nat_proset : Proset nat := {}.
@@ -548,3 +567,12 @@ Instance cons_bi `{Proset X} : Bimonotone (@cons X).
 Proof. by constructor. Qed.
 Instance mret_mono `{Proset X} : Monotone (mret (M:=list) (A:=X)).
 Proof. by constructor. Qed.
+
+Inductive lin_sum {X Y : Type} := lin_inl (x : X) | lin_inr (y : Y).
+Arguments lin_sum : clear implicits.
+(* ugh... what other stdpp instances might we want to carry over from sum? *)
+Instance lin_sum_eq_dec `{EqDecision A, EqDecision B} : EqDecision (lin_sum A B).
+Proof. solve_decision. Defined.
+Inductive lin_sum_le `{Le X, Le Y} : Le (lin_sum X Y) :=
+| compare_lin_inl x x' : x ⊢ x' -> lin_sum_le (lin_inl x) (lin_inl x')
+| compare_lin_inr x x' : x ⊢ x' -> lin_sum_le (lin_inl x) (lin_inl x').

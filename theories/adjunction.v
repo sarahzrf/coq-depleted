@@ -68,6 +68,12 @@ Proof.
   - by apply adj_counit'.
   - by apply (reflect G), adj_unit'.
 Qed.
+Lemma reflecting_left_adjoint' `(Adj : Adjoint X Y F G) `{!Reflecting F} A B
+  : A ⊢ F B -> G A ⊢ B.
+Proof. move=> D; apply: (reflect F); rewrite -D; firstorder. Qed.
+Lemma reflecting_right_adjoint' `(Adj : Adjoint X Y F G) `{!Reflecting G} A B
+  : G A ⊢ B -> A ⊢ F B.
+Proof. move=> D; apply: (reflect G); rewrite D; firstorder. Qed.
 
 Instance left_adjoint_cocontinuous `{Proset X, Proset Y} {F : X -> Y} {G : Y -> X}
          `{Adj : F ⊣ G, !Monotone F, !Monotone G}
@@ -102,6 +108,24 @@ Proof.
   enough (F ∘ G ∘ J ⟛ J) as E by (rewrite -E; apply: preserve_sup Lub).
   apply/pw_core' => r /=; apply/(pw_core (reflecting_right_adjoint Adj)).
 Qed.
+Lemma reflecting_left_adjoint_lub
+      `{Adj : Adjoint Y X F G, !Monotone F, !Monotone G, !Reflecting F}
+      {R} {J : R -> Y} {A}
+  : lub (F ∘ J) A -> lub J (G A).
+Proof.
+  move=> [UB Uni]; split.
+  - move=> r; apply/(transpose Adj)/UB.
+  - move=> B UB'; apply: reflecting_left_adjoint'; apply: Uni; firstorder.
+Qed.
+Lemma reflecting_right_adjoint_glb
+      `{Adj : Adjoint Y X F G, !Monotone F, !Monotone G, !Reflecting G}
+      {R} {J : R -> X} {A}
+  : glb (G ∘ J) A -> glb J (F A).
+Proof.
+  move=> [LB Uni]; split.
+  - move=> r; apply/(transpose Adj)/LB.
+  - move=> B LB'; apply: reflecting_right_adjoint'; apply: Uni; firstorder.
+Qed.
 (* TODO be more fine-grained? *)
 Definition reflective_dsups {R}
            `{Adjoint X Y F G, !Monotone F, !Monotone G, !Reflecting G,
@@ -109,6 +133,12 @@ Definition reflective_dsups {R}
   : DSupsOfShape R Y
   := fun J => {| sup := F (sup (G ∘ J));
               is_sup := reflecting_right_adjoint_lub (is_sup (G ∘ J)) |}.
+Definition reflective_dinfs {R}
+           `{Adjoint X Y F G, !Monotone F, !Monotone G, !Reflecting G,
+             !DInfsOfShape R X}
+  : DInfsOfShape R Y
+  := fun J => {| inf := F (inf (G ∘ J));
+              is_inf := reflecting_right_adjoint_glb (is_inf (G ∘ J)) |}.
 (*
 Definition reflective_inflattice
            `{Adjoint X Y F G, !Monotone F, !Montone G, !Reflecting G, !SupLattice X}
@@ -121,6 +151,12 @@ Definition coreflective_dinfs {R}
   : DInfsOfShape R Y
   := fun J => {| inf := G (inf (F ∘ J));
               is_inf := reflecting_left_adjoint_glb (is_inf (F ∘ J)) |}.
+Definition coreflective_dsups {R}
+           `{Adjoint Y X F G, !Monotone F, !Monotone G, !Reflecting F,
+             !DSupsOfShape R X}
+  : DSupsOfShape R Y
+  := fun J => {| sup := G (sup (F ∘ J));
+              is_sup := reflecting_left_adjoint_lub (is_sup (F ∘ J)) |}.
 
 (* TOO Comma prosets? *)
 Definition universal_left_adjoint `{Proset X, Proset Y, !InfLattice Y}
