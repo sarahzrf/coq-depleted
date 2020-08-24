@@ -22,9 +22,13 @@ Instance: Params (@Adjoint) 6 := {}.
 Arguments adj_unit {_ _ _ _ _ _ _ _} Adj : rename.
 Arguments adj_counit {_ _ _ _ _ _ _ _} Adj : rename.
 Infix "⊣" := Adjoint (no associativity, at level 70) : proset_scope.
-Definition adj_unit' `(Adj : Adjoint X Y F G) {A B} (D : A ⊢ B) : A ⊢ G (F B)
+Definition adj_unit' `(Adj : Adjoint X Y F G) {A} : A ⊢ G (F A)
+  := adj_unit Adj _.
+Definition adj_counit' `(Adj : Adjoint X Y F G) {A} : F (G A) ⊢ A
+  := adj_counit Adj _.
+Definition adj_right `(Adj : Adjoint X Y F G) {A B} (D : A ⊢ B) : A ⊢ G (F B)
   := transitivity D (adj_unit Adj _).
-Definition adj_counit' `(Adj : Adjoint X Y F G) {A B} (D : A ⊢ B) : F (G A) ⊢ B
+Definition adj_left `(Adj : Adjoint X Y F G) {A B} (D : A ⊢ B) : F (G A) ⊢ B
   := transitivity (adj_counit Adj _) D.
 Lemma transpose `(Adj : Adjoint X Y F G) `{!Monotone F, !Monotone G} (A : X) (B : Y)
   : F A ⊢ B <-> A ⊢ G B.

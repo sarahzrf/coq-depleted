@@ -1,0 +1,5 @@
+(coq.theory
+ (name depleted.experiments)
+ (package coq-depleted)
+ (theories depleted))
+

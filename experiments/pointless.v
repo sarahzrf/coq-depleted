@@ -110,6 +110,7 @@ Qed.
 (* The point as a locale. *)
 Definition point : Type := Prop.
 
+(* TODO Put this in the right place. *)
 Instance embed_prop_lex `{Frame X} : Lex (embed_prop (X:=X)).
 Proof.
   apply: lex_alt' => [| A B].
@@ -128,25 +129,6 @@ Proof.
     apply: (mono_core esup); apply/pw_core' => ?; apply: distrib_top.
   - split; last by firstorder.
     move=> H_p; exists H_p => -[].
-Qed.
-
-(* TODO Put this in the right place. *)
-Program Instance Hom_exponents `{Proset X, Proset Y, !InfLattice Y, !Exponents Y}
-  : Exponents (Hom X Y)
-  := {| exponential F G A := Inf B : {B0 | A ⊢ B0}, F (` B) ⟿ G (` B) |}.
-Next Obligation.
-  move=> * A B D.
-  apply: inf_right => -[B' D'] /=.
-  apply: (inf_left (_ ↾ _)); by etransitivity.
-Qed.
-Next Obligation.
-  move=> X ? ? Y ? ? ? ? F G H; split.
-  - move=> Uncurried A /=; apply: inf_right => -[B /= ->].
-    rewrite -meet_exponential -(distrib_meet (F:=Hom_eval_at B)); apply/Uncurried.
-  - move=> /= Curried A; specialize (Curried A); simpl in Curried.
-    setoid_rewrite (inf_lb (A ↾ reflexivity _)) in Curried; simpl in Curried.
-    etransitivity; first by apply: (F_meet (F:=Hom_eval_at A)).
-    rewrite meet_exponential //.
 Qed.
 
 Definition sier : Type := Hom bool Prop.
@@ -282,7 +264,7 @@ Lemma open_alt `{Frame X} (U : point_set X)
   : open U <-> forall p, U p -> exists V, points_in V p /\ points_in V ⊢ U.
 Proof.
   split; first by firstorder.
-  move=> Cov; exists (frame_interior U); split; last by apply: (adj_counit' _ _).
+  move=> Cov; exists (frame_interior U); split; last by apply: (adj_counit' _).
   move=> p /=; rewrite -[R in _ ⊢ R]F_sup => U_p /=.
   move: (U_p) => /Cov [V D] /=.
   unshelve eexists (V ↾ _) => /=; firstorder.

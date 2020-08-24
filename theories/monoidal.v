@@ -4,9 +4,7 @@ Require Import stdpp.list.
 
 Require Import depleted.proset.
 Require Import depleted.bounds.
-(*
 Require Import depleted.adjunction.
-*)
 Local Open Scope proset_scope.
 Local Open Scope proset_util_scope.
 
@@ -52,6 +50,26 @@ Hint Mode OplaxMon ! - - - ! - - - ! : typeclass_instances.
 Class StrongMon `{MonSet X, MonSet Y} (F : X -> Y) :=
   {strong_lax :> LaxMon F; strong_oplax :> OplaxMon F}.
 Hint Mode StrongMon ! - - - ! - - - ! : typeclass_instances.
+
+Lemma oplax_adjoint_lax `{MonSet X, MonSet Y} (F : X -> Y) (G : Y -> X)
+      `{Adj : !F ⊣ G, !Monotone F, !Monotone G}
+  : OplaxMon F <-> LaxMon G.
+Proof.
+  split=> ?; constructor=> [| A B]; apply/(transpose Adj).
+  - apply: pres_memp_op.
+  - rewrite pres_tens_op !adj_counit' //.
+  - apply: pres_memp.
+  - rewrite -pres_tens -!adj_unit' //.
+Qed.
+Corollary adjoint_equivalence_strong `{MonSet X, MonSet Y} (F : X -> Y) (G : Y -> X)
+          `{!F ⊣ G, !G ⊣ F, !Monotone F, !Monotone G}
+  : StrongMon F <-> StrongMon G.
+Proof. split; constructor; apply/oplax_adjoint_lax. Qed.
+(* The next one may only work because we are in prosets---I should go check. *)
+Corollary triple_strong `{MonSet X, MonSet Y} (F : X -> Y) (G : Y -> X) (H' : X -> Y)
+          `{!F ⊣ G, !G ⊣ H', !Monotone F, !Monotone G, !Monotone H'}
+  : TCAnd (OplaxMon F) (LaxMon H') <-> StrongMon G.
+Proof. split=> [[Oplax Lax] | Strong]; split; apply/oplax_adjoint_lax. Qed.
 
 
 Instance cartesian_monoidal `{Proset X, !MeetSemilattice X}
@@ -482,6 +500,61 @@ Proof.
   apply/meet_exponential; rewrite meet_proj2; by apply: D2.
 Qed.
 
+Program Instance pw_exponents {X} `{Exponents Y} : Exponents (X -> Y)
+  := {| exponential F G A := F A ⟿ G A |}.
+Next Obligation.
+  move=>>; apply: forall_proper => A.
+  rewrite -meet_exponential -/(eval_at A (_ ⩕ _)).
+  split; rewrite distrib_meet //.
+Qed.
+
+Program Instance Hom_exponents `{Proset X, Proset Y, !InfLattice Y, !Exponents Y}
+  : Exponents (Hom X Y)
+  := {| exponential F G A := Inf B : {B0 | A ⊢ B0}, F (` B) ⟿ G (` B) |}.
+Next Obligation.
+  move=> * A B D.
+  apply: inf_right => -[B' D'] /=.
+  apply: (inf_left (_ ↾ _)); by etransitivity.
+Qed.
+Next Obligation.
+  move=> X ? ? Y ? ? ? ? F G H; split.
+  - move=> Uncurried A /=; apply: inf_right => -[B /= ->].
+    rewrite -meet_exponential -(distrib_meet (F:=Hom_eval_at B)); apply/Uncurried.
+  - move=> /= Curried A; specialize (Curried A); simpl in Curried.
+    setoid_rewrite (inf_lb (A ↾ reflexivity _)) in Curried; simpl in Curried.
+    etransitivity; first by apply: (F_meet (F:=Hom_eval_at A)).
+    rewrite meet_exponential //.
+Qed.
+
+
 Class HeytingAlgebra (X : Type) `{Lattice X, !Exponents X}.
 Hint Mode HeytingAlgebra ! - - - - - - : typeclass_instances.
 Instance heytingalgebra_def `{Lattice X, !Exponents X} : HeytingAlgebra X := {}.
+
+
+Class Quantale (X : Type)
+      `{Complete X, !MonSet X, !ClosedMonSet X, !LClosedMonSet X}.
+Hint Mode Quantale ! - - - - - - - - : typeclass_instances.
+Instance quantale_def
+         `{Complete X, !MonSet X, !ClosedMonSet X, !LClosedMonSet X}
+  : Quantale X := {}.
+
+Instance prop_quantale : Quantale Prop := {}.
+
+Definition Endo (X : Type) `{Proset X} := Hom X X.
+Identity Coercion endo_to_hom : Endo >-> Hom.
+Instance compose_monoidal `{Proset X} : Monoidal (X:=Endo X) Hom_compose Hom_id.
+Proof. constructor; compute; firstorder. Qed.
+Instance endo_mset `{Proset X} : MonSet (Endo X)
+  := {| pro_tens := Hom_compose |}.
+Program Instance endo_cmset `{Complete X} : ClosedMonSet (Endo X)
+  := {| internal_hom p F := universal_ran p F |}.
+Next Obligation.
+  move=>>; apply: (transpose universal_ran_global_ran).
+  move=> F G D A /=; apply: (mono einf) => ?; apply: D.
+Qed.
+(*
+Program Instance endo_cmset `{Complete X} : ClosedMonSet (Endo X)
+  := r_tensor_internal_hom_adjoint_sufficient (fun (p F : Endo X) => universal_ran p F) _.
+Next Obligation. move=> *; apply: universal_ran_global_ran. Qed.
+*)

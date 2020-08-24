@@ -236,6 +236,8 @@ Instance op_proset `{H : Proset X} : @Proset (op X) op_le.
 Proof. rewrite /Proset /pro_le /op_le; typeclasses eauto. Qed.
 Typeclasses Opaque op Op get_op.
 Opaque op Op get_op.
+Lemma opify `{Proset X} {A B : X} : B ⊢ A -> Op A ⊢ Op B.
+Proof. done. Qed.
 Lemma op_def `{Proset X} {A B : X} : Op A ⊢ Op B <-> B ⊢ A.
 Proof. done. Qed.
 Lemma op_def' `{Proset X} {A B : op X} : A ⊢ B <-> get_op B ⊢ get_op A.
@@ -486,6 +488,10 @@ Instance inl_mono `{Proset X, Proset Y} : Monotone (@inl X Y).
 Proof. typeclasses eauto. Qed.
 Instance inr_mono `{Proset X, Proset Y} : Monotone (@inr X Y).
 Proof. typeclasses eauto. Qed.
+Instance inl_reflect `{Proset X, Proset Y} : Reflecting (@inl X Y).
+Proof. typeclasses eauto. Qed.
+Instance inr_reflect `{Proset X, Proset Y} : Reflecting (@inr X Y).
+Proof. typeclasses eauto. Qed.
 Instance sum_map_proper `{Proset X, Proset X', Proset Y, Proset Y'}
   : Proper ((⇀) ++> (⇀) ++> (⇀)) (@sum_map X X' Y Y').
 Proof. move=> ? ? ? ? ? ? [? | ?] [? | ?] /=; inversion_clear 1; constructor; auto. Qed.
@@ -575,4 +581,21 @@ Instance lin_sum_eq_dec `{EqDecision A, EqDecision B} : EqDecision (lin_sum A B)
 Proof. solve_decision. Defined.
 Inductive lin_sum_le `{Le X, Le Y} : Le (lin_sum X Y) :=
 | compare_lin_inl x x' : x ⊢ x' -> lin_sum_le (lin_inl x) (lin_inl x')
-| compare_lin_inr x x' : x ⊢ x' -> lin_sum_le (lin_inl x) (lin_inl x').
+| compare_lin_inr x x' : x ⊢ x' -> lin_sum_le (lin_inr x) (lin_inr x').
+Hint Constructors lin_sum_le.
+Existing Instance lin_sum_le.
+Instance lin_sum_proset `{Proset X, Proset Y} : Proset (lin_sum X Y).
+Proof.
+  constructor.
+  - case; dintuition.
+  - move=> [] x [] y [] z; inversion_clear 1; inversion_clear 1;
+      constructor; by etransitivity.
+Qed.
+Instance lin_inl_mono `{Proset X, Proset Y} : Monotone (@lin_inl X Y).
+Proof. by constructor. Qed.
+Instance lin_inr_mono `{Proset X, Proset Y} : Monotone (@lin_inr X Y).
+Proof. by constructor. Qed.
+Instance lin_inl_reflect `{Proset X, Proset Y} : Reflecting (@lin_inl X Y).
+Proof. move=> A B; by inversion 1. Qed.
+Instance lin_inr_reflect `{Proset X, Proset Y} : Reflecting (@lin_inr X Y).
+Proof. move=> A B; by inversion 1. Qed.

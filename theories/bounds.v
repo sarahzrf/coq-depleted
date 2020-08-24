@@ -900,16 +900,17 @@ Instance compose_continuous `{Proset X, Proset Y, Proset Z'} {F : Y -> Z'} {G : 
   : Continuous (F ∘ G) | 0.
 Proof. typeclasses eauto. Qed.
 *)
-Instance precomp_continuous {Y Y'} `{Complete X} {f : Y' -> Y}
-  : Continuous (fun g : Y -> X => g ∘ f).
+Instance precomp_pres_infs {R X X'} `{Proset Y, !DInfsOfShape R Y} {f : X' -> X}
+  : PresDInfsOfShape R (fun g : X -> Y => g ∘ f).
 Proof. move=> ? ?; by apply/distrib_inf_sufficient. Qed.
-Instance precomp_cocontinuous {Y Y'} `{Complete X} {f : Y' -> Y}
-  : Cocontinuous (fun g : Y -> X => g ∘ f).
+Instance precomp_pres_sups {R X X'} `{Proset Y, !DSupsOfShape R Y} {f : X' -> X}
+  : PresDSupsOfShape R (fun g : X -> Y => g ∘ f).
 Proof. move=> ? ?; by apply/distrib_sup_sufficient. Qed.
-Instance eval_at_continuous {X} `{Complete Y} {x : X} : Continuous (eval_at (Y:=Y) x).
+Instance eval_at_pres_infs {R X} `{Proset Y, !DInfsOfShape R Y} {x : X}
+  : PresDInfsOfShape R (eval_at (Y:=Y) x).
 Proof. move=> ? ?; by apply/distrib_inf_sufficient. Qed.
-Instance eval_at_cocontinuous {X} `{Complete Y} {x : X}
-  : Cocontinuous (eval_at (Y:=Y) x).
+Instance eval_at_pres_sups {R X} `{Proset Y, !DSupsOfShape R Y} {x : X}
+  : PresDSupsOfShape R (eval_at (Y:=Y) x).
 Proof. move=> ? ?; by apply/distrib_sup_sufficient. Qed.
 
 Lemma distrib_top `{Proset X, Proset Y, !Top X, !Top Y} {F : X -> Y}
