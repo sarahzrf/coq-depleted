@@ -26,13 +26,13 @@ Proof. rewrite /Proset /ctx_le; typeclasses eauto. Qed.
 Definition ctx_all `{Proset X, !MeetSemilattice X} (Γ : ctx X) : X
   := foldr meet ⊤ Γ.*2.
 *)
-Fixpoint ctx_all `{Proset X, !MeetSemilattice X} (Γ : ctx X) : X :=
+Fixpoint ctx_all `{MeetSemilattice X} (Γ : ctx X) : X :=
   match Γ with
   | nil => ⊤
   | cons (s, A) Γ' => A ⩕ ctx_all Γ'
   end.
 Instance: Params (@ctx_all) 4 := {}.
-Instance ctx_all_proper `{Proset X, !MeetSemilattice X}
+Instance ctx_all_proper `{MeetSemilattice X}
   : Proper (submseteq --> (⊢)) (ctx_all (X:=X)).
 Proof.
   move=> Γ Γ'; elim: Γ' Γ / => //
@@ -42,7 +42,7 @@ Proof.
   - apply: meet_left2.
   - by etransitivity.
 Qed.
-Instance ctx_all_proper' `{Proset X, !MeetSemilattice X}
+Instance ctx_all_proper' `{MeetSemilattice X}
   : Proper (submseteq ++> flip (⊢)) (ctx_all (X:=X)).
 Proof. move=> * /=; by apply: ctx_all_proper. Qed.
 (*
@@ -77,15 +77,15 @@ Instance concl_mono `{Proset X} : Monotone (concl (X:=X)).
 Proof. firstorder. Qed.
 
 
-Definition holds `{Proset X, !MeetSemilattice X} (J : judgment X) : Prop
+Definition holds `{MeetSemilattice X} (J : judgment X) : Prop
   := ctx_all (hyps J) ⊢ concl J.
-Arguments holds {_ _ _ _} J /.
-Instance: Params (@holds) 4 := {}.
+Arguments holds {_ _ _ _ _ _} J /.
+Instance: Params (@holds) 6 := {}.
 Notation "[| J |]" := (holds J) (format "[|  J  |]").
-Instance holds_proper `{Proset X, !MeetSemilattice X}
+Instance holds_proper `{MeetSemilattice X}
   : Proper ((⊢) ++> impl) (holds (X:=X)).
 Proof. move=> J J' /= -> //. Qed.
-Instance holds_proper' `{Proset X, !MeetSemilattice X}
+Instance holds_proper' `{MeetSemilattice X}
   : Proper ((⊢) --> flip impl) (holds (X:=X)).
 Proof. move=> J J' /= -> //. Qed.
 (*
@@ -95,38 +95,38 @@ Proof. typeclasses eauto. Qed.
 
 
 (* Natural deduction rules. *)
-Lemma in_ctx `{Proset X, !MeetSemilattice X} {Γ : ctx X} (s : string) {A : X}
+Lemma in_ctx `{MeetSemilattice X} {Γ : ctx X} (s : string) {A : X}
   : (s, A) ∈ Γ -> [| Γ '⊢ A |].
 Proof.
   move=> /(elem_of_list_split _ _) [Γ1] [Γ2] ->.
   rewrite cons_middle -submseteq_middle /=; apply: meet_proj1.
 Qed.
-Lemma assm `{Proset X, !MeetSemilattice X} {Γ : ctx X} (s : string) {A : X}
+Lemma assm `{MeetSemilattice X} {Γ : ctx X} (s : string) {A : X}
       `{In : !TCElemOf (s, A) Γ}
   : [| Γ '⊢ A |].
 Proof. apply: (in_ctx s); elim: In => /=; by constructor. Qed.
 
-Lemma top_i `{Proset X, !MeetSemilattice X} {Γ : ctx X}
+Lemma top_i `{MeetSemilattice X} {Γ : ctx X}
   : [| Γ '⊢ ⊤ |].
 Proof. apply: top_right. Qed.
-Lemma bot_e `{Proset X, !MeetSemilattice X, !Bot X} {Γ : ctx X} {A}
+Lemma bot_e `{MeetSemilattice X, !Bot X} {Γ : ctx X} {A}
   : [| Γ '⊢ ⊥ |] -> [| Γ '⊢ A |].
 Proof. move=> /= ->; apply: bot_left. Qed.
 
-Lemma meet_i `{Proset X, !MeetSemilattice X} {Γ : ctx X} {A B}
+Lemma meet_i `{MeetSemilattice X} {Γ : ctx X} {A B}
   : [| Γ '⊢ A |] -> [| Γ '⊢ B |] -> [| Γ '⊢ A ⩕ B |].
 Proof. apply: meet_right. Qed.
-Lemma meet_e1 `{Proset X, !MeetSemilattice X} {Γ : ctx X} {A B}
+Lemma meet_e1 `{MeetSemilattice X} {Γ : ctx X} {A B}
   : [| Γ '⊢ A ⩕ B |] -> [| Γ '⊢ A |].
 Proof. move=> /= ->; apply: meet_proj1. Qed.
-Lemma meet_e2 `{Proset X, !MeetSemilattice X} {Γ : ctx X} {A B}
+Lemma meet_e2 `{MeetSemilattice X} {Γ : ctx X} {A B}
   : [| Γ '⊢ A ⩕ B |] -> [| Γ '⊢ B |].
 Proof. move=> /= ->; apply: meet_proj2. Qed.
 
-Lemma join_i1 `{Proset X, !MeetSemilattice X, !BinJoins X} {Γ : ctx X} {A B}
+Lemma join_i1 `{MeetSemilattice X, !BinJoins X} {Γ : ctx X} {A B}
   : [| Γ '⊢ A |] -> [| Γ '⊢ A ⩖ B |].
 Proof. move=> /= ->; apply: join_inj1. Qed.
-Lemma join_i2 `{Proset X, !MeetSemilattice X, !BinJoins X} {Γ : ctx X} {A B}
+Lemma join_i2 `{MeetSemilattice X, !BinJoins X} {Γ : ctx X} {A B}
   : [| Γ '⊢ B |] -> [| Γ '⊢ A ⩖ B |].
 Proof. move=> /= ->; apply: join_inj2. Qed.
 Lemma join_e `{HeytingAlgebra X} {Γ : ctx X} (s t : string) {A B C}
@@ -145,8 +145,7 @@ Lemma impl_e `{HeytingAlgebra X} {Γ : ctx X} {A B}
   : [| Γ '⊢ A ⟿ B |] -> [| Γ '⊢ A |] -> [| Γ '⊢ B |].
 Proof. move=> /= D1 D2; rewrite (meet_right D1 D2) modus_ponens //. Qed.
 
-Notation "¬ₕ P" := (P ⟿ ⊥) (at level 75, right associativity).
-Arguments holds {_ _ _ _} J : simpl never.
+Arguments holds {_ _ _ _ _ _} J : simpl never.
 
 (*
 Definition box {X} (A : X) : Prop := True.

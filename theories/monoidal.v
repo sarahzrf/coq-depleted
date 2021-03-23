@@ -72,7 +72,7 @@ Corollary triple_strong `{MonSet X, MonSet Y} (F : X -> Y) (G : Y -> X) (H' : X 
 Proof. split=> [[Oplax Lax] | Strong]; split; apply/oplax_adjoint_lax. Qed.
 
 
-Instance cartesian_monoidal `{Proset X, !MeetSemilattice X}
+Instance cartesian_monoidal `{MeetSemilattice X}
   : Monoidal (X:=X) meet ⊤.
 Proof.
   constructor.
@@ -90,7 +90,7 @@ Proof.
     + apply: meet_left1; apply: meet_proj2.
     + apply: meet_proj2.
 Qed.
-Instance cocartesian_monoidal `{Proset X, !JoinSemilattice X}
+Instance cocartesian_monoidal `{JoinSemilattice X}
   : Monoidal (X:=X) join ⊥.
 Proof.
   constructor.
@@ -112,6 +112,10 @@ Instance cartesian_sym `{Proset X, !BinMeets X} : Sym (X:=X) meet.
 Proof. move=> A B; apply: (meet_right meet_proj2 meet_proj1). Qed.
 Instance cocartesian_sym `{Proset X, !BinJoins X} : Sym (X:=X) join.
 Proof. move=> A B; apply: (join_left join_inj2 join_inj1). Qed.
+Lemma meet_contraction `{Proset X, !BinMeets X} (P : X) : P ⟛ P ⩕ P.
+Proof. split; [by apply: meet_right | apply: meet_proj1]. Qed.
+Lemma join_contraction `{Proset X, !BinJoins X} (P : X) : P ⟛ P ⩖ P.
+Proof. split; [apply: join_inj1 | by apply: join_left]. Qed.
 
 Instance id_strongmon `{MonSet X} : StrongMon (@id X).
 Proof. firstorder. Qed.
@@ -468,12 +472,14 @@ Program Instance prop_cmset : ClosedMonSet Prop
 Next Obligation. firstorder. Qed.
 Program Instance prop_exponents : Exponents Prop
   := {| exponential (P Q : Prop) := P -> Q |}.
-Next Obligation.
-  (* TODO Factor this into a lemma somewhere. *)
-  move=> P Q R; enough (P ∧ Q <-> P ⩕ Q) by firstorder; split.
-  - move=> [? ?] [] //.
-  - move=> C; by move: (C true) (C false).
-Qed.
+Next Obligation. firstorder. Qed.
+
+Program Instance bool_cmset : ClosedMonSet bool
+  := {| internal_hom (P Q : bool) := implb P Q |}.
+Next Obligation. move=> [] [] [] //. Qed.
+Program Instance bool_exponents : Exponents bool
+  := {| exponential (P Q : bool) := implb P Q |}.
+Next Obligation. move=> [] [] [] //. Qed.
 
 Lemma mon_modus_ponens `{ClosedMonSet X} {A B : X}
   : (A ⊸ B) ⊗ A ⊢ B.
@@ -490,7 +496,8 @@ Proof. by rewrite meet_exponential. Qed.
 Lemma l_modus_ponens `{Exponents X} {A B : X}
   : A ⩕ (A ⟿ B) ⊢ B.
 Proof. rewrite (cartesian_sym A) meet_exponential //. Qed.
-Lemma prop_loop `{Proset X, !SupLattice X, !MeetSemilattice X, !Exponents X}
+(* I.e., a frame. *)
+Lemma prop_loop `{MeetSemilattice X, !SupLattice X, !Exponents X}
       {P Q : X} {R : Prop}
   : (P ⊢ embed_prop R) -> (R -> P ⊢ Q) -> P ⊢ Q.
 Proof.
@@ -508,7 +515,8 @@ Next Obligation.
   split; rewrite distrib_meet //.
 Qed.
 
-Program Instance Hom_exponents `{Proset X, Proset Y, !InfLattice Y, !Exponents Y}
+Program Instance Hom_exponents
+        `{Proset X, Proset Y, !InfLattice Y, !BinMeets Y, !Exponents Y}
   : Exponents (Hom X Y)
   := {| exponential F G A := Inf B : {B0 | A ⊢ B0}, F (` B) ⟿ G (` B) |}.
 Next Obligation.
@@ -528,8 +536,96 @@ Qed.
 
 
 Class HeytingAlgebra (X : Type) `{Lattice X, !Exponents X}.
-Hint Mode HeytingAlgebra ! - - - - - - : typeclass_instances.
+Hint Mode HeytingAlgebra ! - - - - - - - - : typeclass_instances.
 Instance heytingalgebra_def `{Lattice X, !Exponents X} : HeytingAlgebra X := {}.
+
+Definition negh `{HeytingAlgebra X} (P : X) : X := P ⟿ ⊥.
+Arguments negh {_ _ _ _ _ _ _ _ _ _} P.
+Instance: Params (@negh) 10 := {}.
+Notation "¬ₕ P" := (negh P) (at level 35, right associativity).
+Instance negh_anti `{HeytingAlgebra X} : Antitone (negh (X:=X)).
+Proof. move=> ? ? /= D. rewrite /negh D //. Qed.
+Definition dnegh `{HeytingAlgebra X} (P : X) : X := ¬ₕ¬ₕP.
+Arguments dnegh {_ _ _ _ _ _ _ _ _ _} P /.
+Instance: Params (@dnegh) 10 := {}.
+Instance dnegh_mono `{HeytingAlgebra X} : Monotone (dnegh (X:=X)).
+Proof. move=>> /= -> //. Qed.
+Lemma heyting_nnlem `{HeytingAlgebra X} (P : X) : ⊤ ⊢ ¬ₕ¬ₕ (P ⩖ ¬ₕP).
+Proof.
+  rewrite /= -meet_exponential lunit [L in L ⊢ _]meet_contraction
+    -{1}join_inj2 -join_inj1.
+  apply: modus_ponens.
+Qed.
+(* TODO yikes *)
+Instance nn_adj `{HeytingAlgebra X} : post_opped (negh (X:=X)) ⊣ pre_opped negh.
+Proof.
+  constructor=> P /=; last apply/op_def; rewrite -meet_exponential l_modus_ponens //.
+Qed.
+
+Class BooleanAlgebra (X : Type) `{HeytingAlgebra X} :=
+  boolean_lem (P : X) : ⊤ ⊢ P ⩖ ¬ₕP.
+Hint Mode BooleanAlgebra ! - - - - - - - - - : typeclass_instances.
+Lemma boolean_dne `{BooleanAlgebra X} (P : X) : ¬ₕ¬ₕP ⊢ P.
+Proof.
+  rewrite -(lunit (T:=meet) (¬ₕ¬ₕP)) meet_exponential (boolean_lem P).
+  apply: join_left; rewrite -l_meet_exponential.
+  + apply: meet_proj2.
+  + rewrite modus_ponens. apply: bot_left.
+Qed.
+Lemma boolean_dne' `{BooleanAlgebra X} (P : X) : ¬ₕ¬ₕP ⟛ P.
+Proof.
+  split; first by apply: boolean_dne.
+  rewrite /= -meet_exponential l_modus_ponens //.
+Qed.
+Lemma boolean_algebra_alt `{HeytingAlgebra X}
+  : BooleanAlgebra X <-> forall P : X, ¬ₕ¬ₕP ⊢ P.
+Proof.
+  split=> [? | DNE] P.
+  - apply: boolean_dne.
+  - rewrite heyting_nnlem //.
+Qed.
+Instance bool_boolean_alg : BooleanAlgebra bool.
+Proof. move=> [] //. Qed.
+Instance bool_negh_antireflecting `{BooleanAlgebra X} : Antireflecting (negh (X:=X)).
+Proof. move=> P Q /= /(anti negh). by setoid_rewrite boolean_dne'. Qed.
+Instance nn_adj' `{BooleanAlgebra X} : pre_opped (negh (X:=X)) ⊣ post_opped negh.
+Proof. constructor=> P /=; first apply/op_def; apply: boolean_dne. Qed.
+Instance nn_antiequiv1 `{BooleanAlgebra X}
+  : OrderEquiv (post_opped (negh (X:=X))) (pre_opped negh) := {}.
+Instance nn_antiequiv2 `{BooleanAlgebra X}
+  : OrderEquiv (pre_opped (negh (X:=X))) (post_opped negh) := {}.
+
+Lemma contra `{BooleanAlgebra X} {P Q : X} : P ⊢ Q <-> ¬ₕQ ⊢ ¬ₕP.
+Proof. split; [apply: negh_anti | apply: bool_negh_antireflecting]. Qed.
+Lemma contra_l `{BooleanAlgebra X} {P Q : X} : ¬ₕP ⊢ Q <-> ¬ₕQ ⊢ P.
+Proof. rewrite contra. split=> ->; rewrite boolean_dne' //. Qed.
+Lemma contra_r `{BooleanAlgebra X} {P Q : X} : P ⊢ ¬ₕQ <-> Q ⊢ ¬ₕP.
+Proof. rewrite contra. split=> <-; rewrite boolean_dne' //. Qed.
+
+Program Instance negh_inf `{HeytingAlgebra X} {R} {J : R -> X} `{!HasSup J}
+  : HasInf (negh ∘ J)
+  := {| inf := ¬ₕ (sup J) |}.
+Next Obligation.
+  move=> ? ? ? ? ? ? ? ? ? ? R J ?.
+  apply: (preserve_inf (J:=Op ∘ J) (F:=pre_opped negh)).
+  apply: is_sup.
+Qed.
+Program Instance negh_sup `{BooleanAlgebra X} {R} {J : R -> X} `{!HasInf J}
+  : HasSup (negh ∘ J)
+  := {| sup := ¬ₕ (inf J) |}.
+Next Obligation.
+  move=> ? ? ? ? ? ? ? ? ? ? ? R J ?.
+  apply: (preserve_sup (J:=Op ∘ J) (F:=pre_opped negh)).
+  apply: is_inf.
+Qed.
+
+Definition complements `{Proset X, !Top X, !Bot X} (a b : X) : Prop
+  := lub (bool_e a b) ⊤ /\ glb (bool_e a b) ⊥.
+Arguments complements {_ _ _ _ _} a b.
+Instance: Params (@complements) 5 := {}.
+Lemma complements_alt `{Lattice X} (a b : X)
+  : complements a b <-> a ⩕ b ⟛ ⊥ /\ a ⩖ b ⟛ ⊤.
+Proof. rewrite /complements sup_unique inf_unique. firstorder. Qed.
 
 
 Class Quantale (X : Type)
@@ -539,7 +635,7 @@ Instance quantale_def
          `{Complete X, !MonSet X, !ClosedMonSet X, !LClosedMonSet X}
   : Quantale X := {}.
 
-Instance prop_quantale : Quantale Prop := {}.
+(* Instance prop_quantale : Quantale Prop := {}. *)
 
 Definition Endo (X : Type) `{Proset X} := Hom X X.
 Identity Coercion endo_to_hom : Endo >-> Hom.

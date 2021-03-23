@@ -117,58 +117,39 @@ Proof.
 Qed.
 
 
-Program Definition form_top : Top form := fun _ => {| inf := '⊤ |}.
+Program Instance form_top : Top form := mk_top '⊤ _.
 Next Obligation. compute; dintuition. Qed.
-Program Definition form_bot : Bot form := fun _ => {| sup := '⊥ |}.
+Program Instance form_bot : Bot form := mk_bot '⊥ _.
 Next Obligation. compute; dintuition. Qed.
-Program Definition form_binmeets : BinMeets form
-  := fun J => {| inf := J true '/\ J false |}.
+Program Instance form_binmeets : BinMeets form
+  := mk_binmeets _and _.
 Next Obligation.
-  compute; split; last by dintuition.
-  move=> []; [apply/conj_E1 | apply/conj_E2]; apply: assm; constructor.
+  split.
+  - by split; [apply/conj_E1 | apply/conj_E2].
+  - move=> []; by apply/conj_I.
 Qed.
-Program Definition form_binjoins : BinJoins form
-  := fun J => {| sup := J true '\/ J false |}.
+Program Instance form_binjoins : BinJoins form
+  := mk_binjoins _or _.
 Next Obligation.
-  split=> [[] | p UB].
-  - apply/disj_I1/assm; constructor.
-  - apply/disj_I2/assm; constructor.
-  - apply/disj_E.
-    + apply: assm; constructor.
-    + apply: weakening (UB true); constructor; apply: submseteq_nil_l.
-    + apply: weakening (UB false); constructor; apply: submseteq_nil_l.
+  move=> *. split=> [<- | [H1 H2]].
+  - split; [apply/disj_I1 | apply/disj_I2]; apply/assm; constructor.
+  - apply: disj_E.
+    + apply: assm. constructor.
+    + apply: weakening H1. repeat constructor.
+    + apply: weakening H2. repeat constructor.
 Qed.
-Instance form_meet_semilattice : MeetSemilattice form
-  := @build_meet_semilattice form _ _ form_top form_binmeets.
-Instance form_join_semilattice : JoinSemilattice form
-  := @build_join_semilattice form _ _ form_bot form_binjoins.
-Instance form_lattice : Lattice form := {}.
 
 Program Instance form_exponents : Exponents form
   := {| exponential := _impl |}.
 Next Obligation.
   move=> p q r; split=> Prf.
-  - apply: impl_I; rewrite -Prf; apply/conj_I/conj_I; auto; constructor; dintuition.
+  - apply: impl_I; rewrite -Prf.
+    apply: (conj_I (assm _) (assm _)); repeat constructor.
   - rewrite Prf; apply: impl_E; change ([?p] '⊢ ?q) with (p ⊢ q).
     + apply: meet_proj1.
     + apply: meet_proj2.
 Qed.
 Instance form_heyting : HeytingAlgebra form := _.
-
-Lemma form_binmeet {p q} : p ⩕ q ⟛ p '/\ q.
-Proof.
-  compute; split; repeat apply: conj_I.
-  - apply/conj_E1/assm; constructor.
-  - apply/conj_E1/conj_E2/assm; constructor.
-  - apply/conj_E1/assm; constructor.
-  - apply/conj_E2/assm; constructor.
-  - apply/top_I.
-Qed.
-Lemma form_binjoin {p q} : p ⩖ q ⟛ p '\/ q.
-Proof.
-  compute; split; (apply: (disj_E (assm _)); first by constructor); dintuition.
-  apply: (disj_E (assm _)); first constructor; dintuition.
-Qed.
 
 
 Definition assignment (H : Type) : Type := positive -> H.
@@ -232,16 +213,16 @@ Theorem completeness {Γ p}
         (Tauto : forall `{HeytingAlgebra H} {ν : assignment H}, ⟦ Γ ⟧*_ν ⊢ ⟦ p ⟧_ν)
   : Γ '⊢ p.
 Proof.
-  pose proof (Tauto form _ _ _ _ _ _ _ atom) as Prf.
+  pose proof (Tauto form _ _ _ _ _ _ _ _ _ atom) as Prf.
   elim: Γ p Prf {Tauto}.
   - move=> p.
     apply: entails_di; first by constructor.
     apply: pro_core_sub1; elim: p; cbn [eval]; try done.
     all: move=> p E1 q E2; split.
-    + rewrite (proj1 E1) (proj1 E2) form_binmeet //. (* yikes *)
-    + rewrite -(proj2 E1) -(proj2 E2) form_binmeet //.
-    + rewrite (proj1 E1) (proj1 E2) form_binjoin //.
-    + rewrite -(proj2 E1) -(proj2 E2) form_binjoin //.
+    + rewrite (proj1 E1) (proj1 E2) //. (* yikes *)
+    + rewrite -(proj2 E1) -(proj2 E2) //.
+    + rewrite (proj1 E1) (proj1 E2) //.
+    + rewrite -(proj2 E1) -(proj2 E2) //.
     + rewrite -(proj2 E1) (proj1 E2) //.
     + rewrite (proj1 E1) -(proj2 E2) //.
   - move=> p Γ IH q /= D.

@@ -297,47 +297,12 @@ Instance esup_mono {R} `{Proset X, !DSupsOfShape R X}
   : Monotone (esup (X:=X) (R:=R)).
 Proof. move=> A B D /=; apply: sup_left => r; by apply: sup_right. Qed.
 
-Notation MeetSemilattice X
-  := (forall `{H : EqDecision R}, @Finite R H -> DInfsOfShape R X).
-Notation JoinSemilattice X
-  := (forall `{H : EqDecision R}, @Finite R H -> DSupsOfShape R X).
-Class Lattice (X : Type) `{Proset X, !MeetSemilattice X, !JoinSemilattice X}.
-Hint Mode Lattice ! - - - - : typeclass_instances.
-Instance lattice_def `{Proset X, !MeetSemilattice X, !JoinSemilattice X}
-  : Lattice X := {}.
 Notation InfLattice X := (forall R, DInfsOfShape R X).
 Notation SupLattice X := (forall R, DSupsOfShape R X).
 Class Complete (X : Type) `{Proset X, !InfLattice X, !SupLattice X}.
 Hint Mode Complete ! - - - - : typeclass_instances.
 Instance complete_def `{Proset X, !InfLattice X, !SupLattice X}
   : Complete X := {}.
-
-Class Directed (X : Type) `{Proset X} :=
-  {direct `{Finite R} (J : R -> X) : X;
-   direct_is_ub `{Finite R} (J : R -> X) : upper_bound J (direct J)}.
-Hint Mode Directed ! - - : typeclass_instances.
-Class Codirected (X : Type) `{Proset X} :=
-  {codirect `{Finite R} (J : R -> X) : X;
-   codirect_is_lb `{Finite R} (J : R -> X) : lower_bound J (codirect J)}.
-Hint Mode Codirected ! - - : typeclass_instances.
-Instance join_semilattice_directed `{Proset X, !JoinSemilattice X}
-  : Directed X
-  := {| direct R _ _ J := sup J; direct_is_ub R _ _ J := sup_ub |}.
-Instance meet_semilattice_codirected `{Proset X, !MeetSemilattice X}
-  : Codirected X
-  := {| codirect R _ _ J := inf J; codirect_is_lb R _ _ J := inf_lb |}.
-Program Instance op_directed `{Codirected T} : Directed (op T)
-  := {| direct R _ _ J := codirect (get_op ∘ J);
-        direct_is_ub R _ _ J := codirect_is_lb J |}.
-Program Instance op_codirected `{Directed T} : Codirected (op T)
-  := {| codirect R _ _ J := direct (get_op ∘ J);
-        codirect_is_lb R _ _ J := direct_is_ub J |}.
-Notation DirectedComplete X := (forall `{Proset R}, Directed R -> SupsOfShape R X).
-
-Program Instance prop_inflattice {R} {J : R -> Prop} : HasInf J := {| inf := all J |}.
-Solve All Obligations with firstorder.
-Program Instance prop_suplattice {R} {J : R -> Prop} : HasSup J := {| sup := ex J |}.
-Solve All Obligations with firstorder.
 
 (* This could probably follow by some abstract nonsense if we moved it *after*
    presheaf stuff... Hmm. Oh well. *)
@@ -395,13 +360,13 @@ Lemma sup_binder `{Proset X} {R} {J J' : R -> X} `{!DSupsOfShape R X}
   : (forall r, J r ⟛ J' r) -> sup J ⟛ sup J'.
 Proof. move=> D; split; apply: sup_binder_fwd; firstorder. Qed.
 
+(*
 Instance proset_rewrite' `{Proset X} : RewriteRelation (flip (pro_le (X:=X))) := {}.
+*)
 Instance under_proper `{PreOrder A R} : Proper (R --> R ++> impl) (Under_rel A R).
 Proof. rewrite Under_relE; firstorder. Qed.
-(*
 Instance under_proper' `{PreOrder A R} : Proper (R ++> R --> flip impl) (Under_rel A R).
 Proof. rewrite Under_relE; firstorder. Qed.
-*)
 
 Lemma inf_unique `{Proset X} {R} {A} {J : R -> X} `{!HasInf J}
   : glb J A <-> A ⟛ inf J.
@@ -579,6 +544,16 @@ Instance: Params (@meet) 4 := {}.
 Instance: Params (@join) 4 := {}.
 Instance: Params (@embed_prop) 5 := {}.
 
+Lemma all_void (J : void -> Prop) : (forall v, J v) <-> True.
+Proof. done. Qed.
+Lemma ex_void (J : void -> Prop) : (exists v, J v) <-> False.
+Proof. split=> -[] //. Qed.
+Lemma all_bool (J : bool -> Prop) : (forall b, J b) <-> J true /\ J false.
+Proof. split=> // -[? ?] [] //. Qed.
+Lemma ex_bool (J : bool -> Prop) : (exists b, J b) <-> J true \/ J false.
+Proof. split=> [[[]] |]; firstorder. Qed.
+(* Hint Resolve *)
+
 Definition top_right `{Proset X, !Top X} {A : X} : A ⊢ ⊤ :=
   inf_right (Empty_set_ind _).
 Definition bot_left `{Proset X, !Bot X} {A : X} : ⊥ ⊢ A :=
@@ -626,22 +601,66 @@ Qed.
 Instance embed_prop_mono `{Proset X, !SupLattice X, !Top X} : Monotone (embed_prop (X:=X)).
 Proof. move=> P Q D; apply: embed_prop_left => ?; by apply embed_prop_right, D. Qed.
 
-Lemma prop_top : top Prop  ⟛ True.
-Proof. firstorder contradiction. Qed.
-Lemma prop_bot : bot Prop  ⟛ False.
-Proof. firstorder contradiction. Qed.
-Lemma prop_meet (P Q : Prop) : P ⩕ Q ⟛ (P /\ Q).
-Proof. split=> [M | [H_P H_Q] []] //; move: (M true) (M false) => //. Qed.
-Lemma prop_join (P Q : Prop) : P ⩖ Q ⟛ (P \/ Q).
-Proof. by split=> [[[] ?] | [] ?]; auto; [exists true | exists false]. Qed.
+(* TODO Fiddle with instance resolution order or maybe make lattice operation
+        classes to be certain? *)
+Program Instance prop_inflattice {R} {J : R -> Prop} : HasInf J := {| inf := all J |}.
+Next Obligation. firstorder. Qed.
+Program Instance prop_suplattice {R} {J : R -> Prop} : HasSup J := {| sup := ex J |}.
+Next Obligation. firstorder. Qed.
+Program Instance prop_top : Top Prop := fun J => {| inf := True |}.
+Next Obligation. firstorder contradiction. Qed.
+Program Instance prop_bot : Bot Prop := fun J => {| sup := False |}.
+Next Obligation. firstorder contradiction. Qed.
+Program Instance prop_meet : BinMeets Prop := fun J => {| inf := J true /\ J false |}.
+Next Obligation. firstorder using all_bool. Qed.
+Program Instance prop_join : BinJoins Prop := fun J => {| sup := J true \/ J false |}.
+Next Obligation. firstorder using ex_bool. Qed.
 Lemma prop_embed_prop (P : Prop) : ⌜ P ⌝ ⟛ P.
 Proof. compute; dintuition. Qed.
 
-Program Definition build_meet_semilattice (X : Type) `{Proset X, !Top X, !BinMeets X}
-  : MeetSemilattice X
-  := fun R _ _ J => {| inf := foldr meet ⊤ (map J (enum R)) |}.
+Class MeetSemilattice (X : Type) `{Proset X, !Top X, !BinMeets X}.
+Hint Mode MeetSemilattice ! - - - - : typeclass_instances.
+Instance meet_semilattice_def `{Proset X, !Top X, !BinMeets X}
+  : MeetSemilattice X := {}.
+Class JoinSemilattice (X : Type) `{Proset X, !Bot X, !BinJoins X}.
+Hint Mode JoinSemilattice ! - - - - : typeclass_instances.
+Instance join_semilattice_def `{Proset X, !Bot X, !BinJoins X}
+  : JoinSemilattice X := {}.
+Class Lattice (X : Type) `{Proset X, !Top X, !Bot X, !BinMeets X, !BinJoins X}.
+Hint Mode Lattice ! - - - - - - : typeclass_instances.
+Instance lattice_def `{Proset X, !Top X, !Bot X, !BinMeets X, !BinJoins X}
+  : Lattice X := {}.
+
+Program Definition mk_top `{Proset X} (t : X) (t_top : forall A, A ⊢ t) : Top X
+  := fun J => {| inf := t |}.
+Next Obligation. by compute. Qed.
+Program Definition mk_bot `{Proset X} (b : X) (t_top : forall A, b ⊢ A) : Bot X
+  := fun J => {| sup := b |}.
+Next Obligation. by compute. Qed.
+Program Definition mk_binmeets `{Proset X} (m : X -> X -> X)
+        (m_meet : forall A B C, C ⊢ m A B <-> C ⊢ A /\ C ⊢ B) : BinMeets X
+  := fun J => {| inf := m (J true) (J false) |}.
+Next Obligation. move=>> H J. split; [by apply/all_bool/H | firstorder]. Qed.
+Program Definition mk_binjoins `{Proset X} (j : X -> X -> X)
+        (j_join : forall A B C, j A B ⊢ C <-> A ⊢ C /\ B ⊢ C) : BinJoins X
+  := fun J => {| sup := j (J true) (J false) |}.
+Next Obligation. move=>> H J. split; [by apply/all_bool/H | firstorder]. Qed.
+
+(*
+Definition mk_lattice `{Proset X} (t b : X) (m j : X -> X -> X)
+        (t_top : forall A, A ⊢ t) (b_bot : forall A, b ⊢ A)
+        (m_meet : forall A B C, C ⊢ m A B <-> C ⊢ A /\ C ⊢ B)
+        (j_join : forall A B C, j A B ⊢ C <-> A ⊢ C /\ B ⊢ C)
+  : PackedLattice X
+  := PackLattice (mk_top t t_top) (mk_bot b b_bot)
+                 (mk_binmeets m m_meet) (mk_binjoins j j_join).
+*)
+
+(* TODO Figure out if there's a way to get this to resolve reasonably as an instance. *)
+Program Definition unbias_meets `{MeetSemilattice X, Finite R} : DInfsOfShape R X
+  := fun J => {| inf := foldr meet ⊤ (map J (enum R)) |}.
 Next Obligation.
-  move=> X ? ? ? ? R ? ? J.
+  move=> X ? ? ? ? ? R ? ? J.
   rewrite /glb /greatest /pred_upper_bound /lower_bound; setoid_rewrite <- Forall_finite.
   elim: (enum R) => /= [| r rs [IH1 IH2]]; split.
   - done.
@@ -651,11 +670,10 @@ Next Obligation.
     + apply: Forall_impl IH1 (fun _ => meet_left2).
   - move=> B /Forall_cons [? /IH2 ?]; by apply: meet_right.
 Qed.
-Program Definition build_join_semilattice (X : Type) `{Proset X, !Bot X, !BinJoins X}
-  : JoinSemilattice X
-  := fun R _ _ J => {| sup := foldr join ⊥ (map J (enum R)) |}.
+Program Definition unbias_joins `{JoinSemilattice X, Finite R} : DSupsOfShape R X
+  := fun J => {| sup := foldr join ⊥ (map J (enum R)) |}.
 Next Obligation.
-  move=> X ? ? ? ? R ? ? J.
+  move=> X ? ? ? ? ? R ? ? J.
   rewrite /lub /least /pred_lower_bound /upper_bound; setoid_rewrite <- Forall_finite.
   elim: (enum R) => /= [| r rs [IH1 IH2]]; split.
   - done.
@@ -666,33 +684,40 @@ Next Obligation.
   - move=> B /Forall_cons [? /IH2 ?]; by apply: join_left.
 Qed.
 
-Program Instance nat_join_semilattice : JoinSemilattice nat
-  := @build_join_semilattice nat _ _ (fun _ => {| sup := 0 |})
-                             (fun J => {| sup := max (J true) (J false) |}).
+Class Directed (X : Type) `{Proset X} :=
+  {direct `{Finite R} (J : R -> X) : X;
+   direct_is_ub `{Finite R} (J : R -> X) : upper_bound J (direct J)}.
+Hint Mode Directed ! - - : typeclass_instances.
+Class Codirected (X : Type) `{Proset X} :=
+  {codirect `{Finite R} (J : R -> X) : X;
+   codirect_is_lb `{Finite R} (J : R -> X) : lower_bound J (codirect J)}.
+Hint Mode Codirected ! - - : typeclass_instances.
+Instance join_semilattice_directed `{JoinSemilattice X}
+  : Directed X
+  := let Has := @unbias_joins in
+     {| direct R _ _ J := sup J; direct_is_ub R _ _ J := sup_ub |}.
+Instance meet_semilattice_codirected `{MeetSemilattice X}
+  : Codirected X
+  := let Has := @unbias_meets in
+     {| codirect R _ _ J := inf J; codirect_is_lb R _ _ J := inf_lb |}.
+Program Instance op_directed `{Codirected T} : Directed (op T)
+  := {| direct R _ _ J := codirect (get_op ∘ J);
+        direct_is_ub R _ _ J := codirect_is_lb J |}.
+Program Instance op_codirected `{Directed T} : Codirected (op T)
+  := {| codirect R _ _ J := direct (get_op ∘ J);
+        codirect_is_lb R _ _ J := direct_is_ub J |}.
+Notation DirectedComplete X := (forall `{Proset R}, Directed R -> SupsOfShape R X).
+
+Program Instance nat_bot : Bot nat := mk_bot 0 _.
 Next Obligation. compute; dintuition. Qed.
-Next Obligation.
-  move=> J; split.
-  - move=> []; [apply: Nat.le_max_l | apply: Nat.le_max_r].
-  - move=> n UB; apply: Nat.max_lub; apply: UB.
-Qed.
-Program Instance bool_meet_semilattice : MeetSemilattice bool
-  := @build_meet_semilattice bool _ _ (fun _ => {| inf := true |})
-                             (fun J => {| inf := andb (J true) (J false) |}).
-Next Obligation. compute; split; [dintuition | case; dintuition]. Qed.
-Next Obligation.
-  move=> J; split.
-  - move=> []; apply/implyP => /andP [//].
-  - move=> b LB; apply/implyP => H; apply/andP; split; by apply/(implyP (LB _)).
-Qed.
-Program Instance bool_join_semilattice : JoinSemilattice bool
-  := @build_join_semilattice bool _ _ (fun _ => {| sup := false |})
-                             (fun J => {| sup := orb (J true) (J false) |}).
-Next Obligation. compute; split; [dintuition | case; dintuition]. Qed.
-Next Obligation.
-  move=> J; split.
-  - move=> []; apply/implyP => H; apply/orP; auto.
-  - move=> b UB; apply/implyP => /orP [] /(implyP (UB _)) //.
-Qed.
+Instance nat_binmeets : BinMeets nat := mk_binmeets min Nat.min_glb_iff.
+Instance nat_binjoins : BinJoins nat := mk_binjoins max Nat.max_lub_iff.
+
+Program Instance bool_top : Top bool := mk_top true _.
+Program Instance bool_bot : Bot bool := mk_bot false _.
+Program Instance bool_binmeets : BinMeets bool := mk_binmeets andb _.
+Program Instance bool_binjoins : BinJoins bool := mk_binjoins orb _.
+Solve All Obligations with repeat case; compute; tauto.
 
 Class PreservesInf `{Proset X, Proset Y} {R} (F : X -> Y) (J : R -> X) :=
   preserve_inf A : glb J A -> glb (F ∘ J) (F A).
@@ -767,6 +792,14 @@ Lemma preserves_sup_alt3 `{Proset X, Proset Y} {R} {F : X -> Y} {J : R -> X}
       `{!Monotone F, !HasSup J, !HasSup (F ∘ J)}
   : PreservesSup F J <-> F (Sup r, J r) ⟛ Sup r, F (J r).
 Proof. rewrite preserves_sup_alt2; apply: sup_unique. Qed.
+Lemma preserves_inf_alt4 `{Proset X, Proset Y} {R} {F : X -> Y} {J : R -> X}
+      `{!Monotone F, !HasInf (F ∘ J)}
+  : PreservesInf F J <-> forall `{!HasInf J}, F (Inf r, J r) ⟛ Inf r, F (J r).
+Proof. rewrite preserves_inf_alt. apply: forall_proper => ?. apply: inf_unique. Qed.
+Lemma preserves_sup_alt4 `{Proset X, Proset Y} {R} {F : X -> Y} {J : R -> X}
+      `{!Monotone F, !HasSup (F ∘ J)}
+  : PreservesSup F J <-> forall `{!HasSup J}, F (Sup r, J r) ⟛ Sup r, F (J r).
+Proof. rewrite preserves_sup_alt. apply: forall_proper => ?. apply: sup_unique. Qed.
 
 Notation PresInfsOfShape R F := (forall J, Monotone J -> PreservesInf (R:=R) F J).
 Notation PresSupsOfShape R F := (forall J, Monotone J -> PreservesSup (R:=R) F J).
@@ -804,11 +837,7 @@ Lemma bool_diagram_eta `{Proset X} (J : bool -> X)
 Proof. apply/pw_core' => -[] //. Qed.
 Lemma bool_interval `{Proset X} (J : bool -> X)
   : Monotone J <-> J false ⊢ J true.
-Proof.
-  split.
-  - move=> ?; by apply: mono.
-  - move=> D [] [] //.
-Qed.
+Proof. compute. rewrite !all_bool. firstorder. Qed.
 Lemma bool_interval' `{Proset X} (A B : X)
   : A ⊢ B <-> Monotone (bool_e B A).
 Proof. symmetry; apply: bool_interval. Qed.
@@ -924,19 +953,16 @@ Proof. rewrite distrib_sup; by apply: (mono_core esup); apply/pw_core'. Qed.
 Lemma distrib_meet `{Proset X, Proset Y, !BinMeets X, !BinMeets Y}
       {F : X -> Y} `{!PresDInfsOfShape bool F} {A B}
   : F (A ⩕ B) ⟛ F A ⩕ F B.
-Proof. rewrite distrib_inf; apply: (mono_core einf); apply/pw_core' => -[] //. Qed.
+Proof. rewrite distrib_inf. by under inf_binder do rewrite fun_if. Qed.
 Lemma distrib_join `{Proset X, Proset Y, !BinJoins X, !BinJoins Y}
       {F : X -> Y} `{!PresDSupsOfShape bool F} {A B}
   : F (A ⩖ B) ⟛ F A ⩖ F B.
-Proof. rewrite distrib_sup; apply: (mono_core esup); apply/pw_core' => -[] //. Qed.
+Proof. rewrite distrib_sup. by under sup_binder do rewrite fun_if. Qed.
 Lemma distrib_embed_prop `{Proset X, !SupLattice X, !Top X,
                            Proset Y, !SupLattice Y, !Top Y} {F : X -> Y}
       {P : Prop} `{!PresDInfsOfShape void F, !PresDSupsOfShape P F} 
   : F (⌜ P ⌝) ⟛ ⌜ P ⌝.
-Proof.
-  rewrite distrib_sup; apply: (mono_core esup); apply/pw_core' => H_P /=.
-  apply: distrib_top.
-Qed.
+Proof. rewrite distrib_sup. by under sup_binder do rewrite distrib_top. Qed.
 
 Lemma F_top `{Proset X, Proset Y, !Top X, !Top Y} {F : X -> Y}
   : F ⊤ ⊢ ⊤.
@@ -962,9 +988,10 @@ Proof.
 Qed.
 
 
-Lemma lex_alt `{Proset X, !MeetSemilattice X, Proset Y} (F : X -> Y) `{!Monotone F}
+Lemma lex_alt `{MeetSemilattice X, Proset Y} (F : X -> Y) `{!Monotone F}
   : PresDInfsOfShape void F -> PresDInfsOfShape bool F -> Lex F.
 Proof.
+  set Has := @unbias_meets.
   move=> Base Step.
   enough (forall n, PresDInfsOfShape (fin n) F). {
     move=> R ? ? J A.
@@ -986,9 +1013,10 @@ Proof.
         -- apply: meet_proj1.
         -- apply: meet_left2; apply: inf_lb.
 Qed.
-Lemma rex_alt `{Proset X, !JoinSemilattice X, Proset Y} (F : X -> Y) `{!Monotone F}
+Lemma rex_alt `{JoinSemilattice X, Proset Y} (F : X -> Y) `{!Monotone F}
   : PresDSupsOfShape void F -> PresDSupsOfShape bool F -> Rex F.
 Proof.
+  set Has := @unbias_joins.
   move=> Base Step.
   enough (forall n, PresDSupsOfShape (fin n) F). {
     move=> R ? ? J A.
@@ -1010,8 +1038,7 @@ Proof.
       * apply: sup_ub.
       * apply: sup_left => ?; apply: sup_ub.
 Qed.
-Lemma lex_alt' `{Proset X, Proset Y, !MeetSemilattice X, !MeetSemilattice Y}
-      (F : X -> Y) `{!Monotone F}
+Lemma lex_alt' `{MeetSemilattice X, MeetSemilattice Y} (F : X -> Y) `{!Monotone F}
   : ⊤ ⊢ F ⊤ -> (forall A B, F A ⩕ F B ⊢ F (A ⩕ B)) -> Lex F.
 Proof.
   move=> PresTop PresBin; apply: lex_alt => J; apply: distrib_inf_sufficient.
@@ -1022,8 +1049,7 @@ Proof.
       [J in F (einf J)]bool_diagram_eta.
     apply: PresBin.
 Qed.
-Lemma rex_alt' `{Proset X, Proset Y, !JoinSemilattice X, !JoinSemilattice Y}
-      (F : X -> Y) `{!Monotone F}
+Lemma rex_alt' `{JoinSemilattice X, JoinSemilattice Y} (F : X -> Y) `{!Monotone F}
   : F ⊥ ⊢ ⊥ -> (forall A B, F (A ⩖ B) ⊢ F A ⩖ F B) -> Rex F.
 Proof.
   move=> PresBot PresBin; apply: rex_alt => J; apply: distrib_sup_sufficient.

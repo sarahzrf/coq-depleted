@@ -22,7 +22,7 @@ Defined.
 Definition DProp : Type := sigT Decision.
 Coercion dprop := tag : DProp -> Prop.
 Arguments dprop !_ /.
-Instance dprop_decision {P : DProp} : Decision (tag P) := tagged P.
+Instance dprop_decision {P : DProp} : Decision P := tagged P.
 Definition in_DProp (P : Prop) `{H : !Decision P} : DProp := existT P H.
 Instance dprop_le : Le DProp :=
   fun s1 s2 => dprop s1 ⊢ dprop s2.
@@ -61,45 +61,43 @@ Proof.
   - move=> H_Q; by apply: (Uni (@in_DProp Q (left H_Q))).
 Qed.
 
-Definition negd (P : DProp) : DProp := in_DProp (~P).
-Arguments negd !_ /.
-Instance negd_anti : Antitone negd.
-Proof. compute; firstorder. Qed.
-Instance negd_antireflecting : Antireflecting negd.
-Proof. move=> [P [? | ?]] [Q [? | ?]] /=; firstorder. Qed.
-(* TODO yikes *)
-Instance nn_adj : post_opped negd ⊣ pre_opped negd.
-Proof. constructor=> -[P ?]; by compute. Qed.
-Instance nn_adj' : pre_opped negd ⊣ post_opped negd.
-Proof. constructor=> -[P ?]; compute; apply: dec_stable. Qed.
-Instance nn_antiequiv1 : OrderEquiv (post_opped negd) (pre_opped negd) := {}.
-Instance nn_antiequiv2 : OrderEquiv (pre_opped negd) (post_opped negd) := {}.
+Program Instance dprop_reflect_inf {R} (J : R -> DProp) (Dec : Decision (forall r, J r))
+  : HasInf J
+  := {| inf := in_DProp (forall r, J r) |}.
+Next Obligation. move=> *; by apply: (reflecting_undistrib_inf (F:=dprop)). Qed.
+Program Instance dprop_reflect_sup {R} (J : R -> DProp) (Dec : Decision (exists r, J r))
+  : HasSup J
+  := {| sup := in_DProp (exists r, J r) |}.
+Next Obligation. move=> *; by apply: (reflecting_undistrib_sup (F:=dprop)). Qed.
 
-Lemma dcontra {P Q} : P ⊢ Q <-> negd Q ⊢ negd P.
-Proof. move: P Q => [P [? | ?]] [Q [? | ?]] /=; firstorder. Qed.
-Lemma ddne {P} : negd (negd P) ⟛ P.
-Proof. move: P => [P [? | ?]]; by compute. Qed.
-Lemma dcontra_l {P Q} : negd P ⊢ Q <-> negd Q ⊢ P.
-Proof. rewrite dcontra; split=> ->; [rewrite ddne // | rewrite -(proj2 ddne) //]. Qed.
-Lemma dcontra_r {P Q} : P ⊢ negd Q <-> Q ⊢ negd P.
-Proof. rewrite dcontra; split=> <-; [rewrite -(proj2 ddne) // | rewrite ddne //]. Qed.
+Program Instance dprop_top : Top DProp := mk_top (in_DProp ⊤) _.
+Next Obligation. done. Qed.
+Program Instance dprop_bot : Bot DProp := mk_bot (in_DProp ⊥) _.
+Next Obligation. move=> ? []. Qed.
+Program Instance dprop_binmeets : BinMeets DProp
+  := mk_binmeets (fun P Q : DProp => in_DProp (P /\ Q)) _.
+Next Obligation. move=> [? ?] [? ?] [? ?] /=. firstorder. Qed.
+Program Instance dprop_binjoins : BinJoins DProp
+  := mk_binjoins (fun P Q : DProp => in_DProp (P \/ Q)) _.
+Next Obligation. move=> [? ?] [? ?] [? ?] /=. firstorder. Qed.
 
-Program Instance negd_inf {R} {J : R -> DProp} `{!HasSup J}
-  : HasInf (negd ∘ J)
-  := {| inf := negd (sup J) |}.
+Program Instance dprop_exponents : Exponents DProp
+  := {| exponential (P Q : DProp) := in_DProp (P -> Q) |}.
 Next Obligation.
-  move=> R J ?.
-  apply: (preserve_inf (J:=Op ∘ J) (F:=pre_opped negd)).
-  apply: is_sup.
+  move=> P Q R. rewrite -!(embed dprop).
+  split; rewrite (distrib_meet (F:=dprop)) meet_exponential //.
 Qed.
-Program Instance negd_sup {R} {J : R -> DProp} `{!HasInf J}
-  : HasSup (negd ∘ J)
-  := {| sup := negd (inf J) |}.
-Next Obligation.
-  move=> R J ?.
-  apply: (preserve_sup (J:=Op ∘ J) (F:=pre_opped negd)).
-  apply: is_inf.
-Qed.
+Instance dprop_boolean_alg : BooleanAlgebra DProp.
+Proof. move=> []. compute. firstorder. Qed.
+
+Lemma prop_negh (P : Prop) : ¬ₕP ⟛ ~P.
+Proof. done. Qed.
+Lemma prop_negh' (P : Prop) : ¬ₕP <-> ~P.
+Proof. done. Qed.
+Lemma dprop_negh (P : DProp) : ¬ₕP ⟛ in_DProp (~P).
+Proof. firstorder. Qed.
+Lemma dprop_negh' (P : DProp) : ¬ₕP <-> ~P.
+Proof. apply: dprop_negh. Qed.
 
 (* TODO "Algebras of the double negation monad" for an arbitrary Heyting algebra. *)
 Class Regular (P : Prop) := dne : ~ ~ P -> P.
@@ -126,14 +124,91 @@ Lemma regular_bind {P} `{Regular Q}
   : (P -> Q) -> ((P -> False) -> False) -> Q.
 Proof. firstorder. Qed.
 
-Program Instance dprop_reflect_inf {R} (J : R -> DProp) (Dec : Decision (forall r, J r))
-  : HasInf J
-  := {| inf := in_DProp (forall r, J r) |}.
-Next Obligation. move=> *; by apply: (reflecting_undistrib_inf (F:=dprop)). Qed.
-Program Instance dprop_reflect_sup {R} (J : R -> DProp) (Dec : Decision (exists r, J r))
-  : HasSup J
-  := {| sup := in_DProp (exists r, J r) |}.
-Next Obligation. move=> *; by apply: (reflecting_undistrib_sup (F:=dprop)). Qed.
+Definition RProp : Type := sig Regular.
+Coercion rprop := sval : RProp -> Prop.
+Arguments rprop !_ /.
+Instance rprop_regular {P : RProp} : Regular (`P) := proj2_sig P.
+Definition in_RProp (P : Prop) `{H : !Regular P} : RProp := P as_a RProp.
+Instance regular_monclosed : MonClosed Regular.
+Proof. firstorder. Qed.
+Definition dn : Prop -> RProp := (not ∘ not) ↑.
+Instance rprop_reflection : dn ⊣ rprop.
+Proof. constructor; [firstorder | move=> [P ?] //=]. Qed.
+Instance reg_closed {R} {J : R -> RProp} `{!HasInf (sval ∘ J)} : InfClosed J.
+Proof. hnf. apply -> prop_unfold. apply inf_right => r. rewrite inf_lb dne' //. Qed.
+Instance rprop_inflattice : InheritsDInfs Prop RProp
+  := fun R _ J => sig_inf.
+(*
+Program Instance rprop_inflattice : InfLattice RProp
+  := fun R J => {| inf := inf (rprop ∘ J) ↾ forall_regular |}.
+Next Obligation. compute; firstorder. Qed.
+*)
+Instance rprop_suplattice : InheritsDSups Prop RProp
+  := fun R _ J => reflective_dsup (F:=dn) J.
+
+Definition d2r : DProp -> RProp := dprop ↑.
+
+Program Instance rprop_exponents : Exponents RProp
+  := {| exponential (P Q : RProp) := in_RProp (P -> Q) |}.
+Next Obligation.
+  move=> P Q R. rewrite -!(embed rprop).
+  split; rewrite (distrib_meet (F:=rprop)) meet_exponential //.
+Qed.
+Lemma rprop_negh (P : RProp) : ¬ₕP ⟛ in_RProp (~P).
+Proof. firstorder. Qed.
+Lemma rprop_negh' (P : RProp) : ¬ₕP <-> ~P.
+Proof. apply: rprop_negh. Qed.
+Instance rprop_boolean_alg : BooleanAlgebra RProp.
+Proof. move=> -[P]. compute. tauto. Qed.
+
+Theorem rprop_monadic_completion `{Proset X} (i : X -> Prop) (L : Prop -> X)
+        `{Adj : !L ⊣ i, !Monotone i, !Reflecting i, !Monotone L}
+        (F : DProp -> X) `{!Monotone F} (E_F : i ∘ F ⟛ dprop)
+  : let F' := L ∘ rprop in
+    i ∘ F' ⟛ rprop /\ F ⟛ F' ∘ d2r /\
+    forall (G : RProp -> X) `{!Monotone G}, i ∘ G ⟛ rprop /\ F ⟛ G ∘ d2r -> G ⟛ F'.
+Proof.
+  move=> F'.
+  have E_F' : forall P, F P ⟛ F' (d2r P). {
+    move=> P. apply: (reflect_core i).
+    rewrite /F' /= -(pw_core E_F) /=
+            [L _](pw_core (reflecting_right_adjoint Adj)) //.
+  }
+  split; last split=> [| G ? [E1 E2]]; apply/pw_core' => P //=.
+  - split=> H_P; last by firstorder.
+    apply: (regular_lem P) => Dec.
+    rewrite -[_ P](pw_core E_F (in_DProp P)) /= E_F' //.
+  - rewrite /F' /= -(pw_core E1) [L _](pw_core (reflecting_right_adjoint Adj)) //.
+Qed.
+
+Definition ran_dprop `{Proset X, !InfLattice X, !BinMeets X, !Bot X}
+           (F : DProp -> X) (P : Prop) : X
+  := (Inf _ : ~P, F ⊥) ⩕ F ⊤.
+Lemma ran_dprop_correct `{Proset X, !InfLattice X, !BinMeets X, !Bot X}
+      (F : Hom DProp X) (P : Prop)
+  : universal_ran dprop F P ⟛ ran_dprop F P.
+Proof.
+  split.
+  - apply: meet_right.
+    + apply: inf_right => NP. by apply: (inf_left (⊥ ↾ _)).
+    + by apply: (inf_left (⊤ ↾ _)); first apply: top_right.
+  - apply: inf_right => -[[Q [Y | N]] /= D].
+    + rewrite /ran_dprop meet_proj2. apply: mono. by compute.
+    + rewrite /ran_dprop meet_proj1 (inf_lb (N ∘ D)) bot_left //.
+Qed.
+(*
+Corollary dprop_codensity : local_ran dprop dprop dnegh.
+Proof.
+  (* ... *)
+ *)
+
+Corollary dprop_codensity : local_ran dprop dprop dnegh.
+Proof.
+  move=> G ?. split=> D P /=.
+  - rewrite D. apply: dne.
+  - move=> GP. apply: (regular_lem P) => ?.
+    specialize (D (in_DProp P)). firstorder.
+Qed.
 
 Lemma dprop_nn_inf {R} (J : R -> DProp)
   : (HasInf J -> False) -> False.
@@ -158,16 +233,28 @@ Proof.
   apply: regular_bind (dprop_nn_inf J) => Has.
   rewrite instantiate_inf dprop_inf //.
 Qed.
-Definition must_exist {R} (J : R -> DProp) : Prop := ~forall r, negd (J r).
+Instance d2r_cont : Continuous d2r.
+Proof.
+  move=> R J. apply/preserves_inf_alt4 => ?.
+  change (dprop (inf J) <-> forall r, d2r (J r)). rewrite dprop_inf //.
+Qed.
+Definition must_exist {R} (J : R -> DProp) : Prop := ~ ~ exists r, J r.
 Instance: Params (@must_exist) 1 := {}.
+Instance d2r_cocont : Cocontinuous d2r.
+Proof.
+  move=> R J. apply/preserves_sup_alt4 => ?.
+  split=> /= H.
+  - apply: regular_lem => D.
+    move: H. change (sup J ⊢ @in_DProp (must_exist J) D).
+    apply: sup_left. compute. firstorder.
+  - apply: regular_bind H => -[y].
+    change (J y ⊢ sup J). apply: (sup_ub y).
+Qed.
 Lemma dprop_sup {R} (J : R -> DProp) `{!HasSup J}
   : sup J <-> must_exist J.
-Proof.
-  rewrite -[dprop (sup J)]dne'; apply: not_iff_compat.
-  change (dprop (inf (negd ∘ J)) ⟛ forall r, negd (J r)); apply: dprop_inf.
-Qed.
+Proof. apply: (distrib_sup J (F:=d2r)). Qed.
 Lemma dprop_sup' {R} (J : R -> DProp)
-  : (forall `{!HasSup J}, dprop (sup J)) <-> must_exist J.
+  : (forall `{!HasSup J}, sup J) <-> must_exist J.
 Proof.
   apply: regular_bind (dprop_nn_sup J) => Has.
   rewrite instantiate_sup dprop_sup //.
@@ -192,48 +279,6 @@ Proof.
   move=> A /(_ r J_r); firstorder.
 Defined.
 
-Definition RProp : Type := sig Regular.
-Coercion rprop := sval : RProp -> Prop.
-Arguments rprop !_ /.
-Instance rprop_regular {P : RProp} : Regular (`P) := proj2_sig P.
-Definition in_RProp (P : Prop) `{H : !Regular P} : RProp := P as_a RProp.
-Instance regular_monclosed : MonClosed Regular.
-Proof. firstorder. Qed.
-Definition dn : Prop -> RProp := (not ∘ not) ↑.
-Instance RProp_reflection : dn ⊣ rprop.
-Proof. constructor; [firstorder | move=> [P ?] //=]. Qed.
-Program Instance rprop_inflattice : InfLattice RProp
-  := fun R J => {| inf := inf (rprop ∘ J) ↾ forall_regular |}.
-Next Obligation. compute; firstorder. Qed.
-Instance rprop_suplattice : SupLattice RProp
-  := fun R => reflective_dsups (F:=dn).
-
-Definition negr (P : RProp) : RProp := in_RProp (~P).
-Arguments negr !_ /.
-Instance negr_anti : Antitone negr.
-Proof. compute; firstorder. Qed.
-Instance negr_antireflecting : Antireflecting negr.
-Proof. move=> [P ?] [Q ?] /=; firstorder. Qed.
-(* TODO yikes *)
-Instance nnr_adj : post_opped negr ⊣ pre_opped negr.
-Proof. constructor=> -[P ?]; by compute. Qed.
-Instance nnr_adj' : pre_opped negr ⊣ post_opped negr.
-Proof. constructor=> -[P ?]; by compute. Qed.
-Instance nnr_antiequiv1 : OrderEquiv (post_opped negr) (pre_opped negr) := {}.
-Instance nnr_antiequiv2 : OrderEquiv (pre_opped negr) (post_opped negr) := {}.
-
-Lemma rcontra {P Q} : P ⊢ Q <-> negr Q ⊢ negr P.
-Proof. move: P Q => [P ?] [Q ?] /=; firstorder. Qed.
-Lemma rdne {P} : negr (negr P) ⟛ P.
-Proof. move: P => [P ?]; by compute. Qed.
-Lemma rcontra_l {P Q} : negr P ⊢ Q <-> negr Q ⊢ P.
-Proof. move: P Q => [P ?] [Q ?] /=; firstorder. Qed.
-Lemma rcontra_r {P Q} : P ⊢ negr Q <-> Q ⊢ negr P.
-Proof. move: P Q => [P ?] [Q ?] /=; firstorder. Qed.
-
-Definition d2r : DProp -> RProp := dprop ↑.
-
-
 (* TODO Work with monotone stuff, not just extensional stuff! *)
 Class Markovian (R : Type) `{Proset R} :=
   markov (P : R -> DProp) `{!Monotone P} : ~(forall r, P r) -> exists r, ~P r.
@@ -248,14 +293,16 @@ Hint Mode Omniscient ! - - : typeclass_instances.
 
 Lemma WO_alt1 `{WeaklyOmniscient R} (J : R -> DProp) `{!Antitone J} : HasSup J.
 Proof.
-  have ? : Monotone (fun r => negd (J r)) by move=> P Q -> //.
-  apply/dprop_sup''2/not_dec/weak_omniscience.
+  apply/dprop_sup''2.
+  case: (weak_omniscience (negh ∘ J)) => /=; [right | left]; firstorder.
 Defined.
 Lemma WO_alt2 `{Proset R} :
   (forall (J : R -> DProp) `{!Antitone J}, HasSup J) -> WeaklyOmniscient R.
 Proof.
   move=> Has J ?.
-  have : Decision (must_exist (negd ∘ J)) by apply/dprop_sup''1.
-  rewrite /must_exist /= => -[| NN]; first by right; firstorder.
-  do 2 setoid_rewrite dne' in NN; by left.
+  rewrite (_ : (forall r, J r) <-> ~ ~ ~ exists r, ~J r). 2: {
+    setoid_rewrite <- (fun r => dne' (P:=J r)).
+    firstorder.
+  }
+  apply: not_dec. apply/(dprop_sup''1 (negh ∘ J)).
 Defined.

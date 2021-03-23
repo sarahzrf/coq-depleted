@@ -18,7 +18,7 @@ Proof. move=> /opify /(mono F) //. Qed.
 Hint Resolve danti.
 
 Program Definition yo `{Proset X} (A : X) : down X :=
-  fun B => Op A ⊢ B.
+  fun B : X => B ⊢ A.
 Next Obligation. move=> * ? * ?; by etransitivity. Qed.
 Instance: Params (@yo) 3 := {}.
 Lemma yoneda `{Proset X} (A : X) (F : down X)
@@ -36,7 +36,7 @@ Proof. move=> A B /(_ A) /=; by apply. Qed.
 Instance yo_continuous `{Proset X} : Continuous (yo (X:=X)).
 Proof.
   move=> R J A [C U]; split=> [r | A' C'] B /=.
-  - move=> <-; apply: C.
+  - move=> ->; apply: C.
   - move=> /yoneda D; apply: U => r; apply: (reflect yo); etransitivity; firstorder.
 Qed.
 Definition principal `{Proset X} (F : down X) : Prop :=

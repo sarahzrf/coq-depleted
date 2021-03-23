@@ -11,9 +11,9 @@ Local Open Scope proset_util_scope.
 
 
 Class Frame (X : Type)
-      `{Proset X, !SupLattice X, !MeetSemilattice X, !Exponents X}.
-Hint Mode Frame ! - - - - - : typeclass_instances.
-Instance frame_def `{Proset X, !SupLattice X, !MeetSemilattice X, !Exponents X}
+      `{MeetSemilattice X, !SupLattice X, !Exponents X}.
+Hint Mode Frame ! - - - - - - - : typeclass_instances.
+Instance frame_def `{MeetSemilattice X, !SupLattice X, !Exponents X}
   : Frame X := {}.
 
 Class FrameMorph `{Proset X, Proset Y} (F : X -> Y)
@@ -98,12 +98,12 @@ Proof.
   apply/preserves_sup_alt => ?; apply/sup_unique/pw_core' => f /=.
   rewrite distrib_sup //.
 Qed.
-Instance preimage_of_lex `{Proset X, Proset Y, !MeetSemilattice X}
+Instance preimage_of_lex `{MeetSemilattice X, MeetSemilattice Y}
   : Lex (preimage_of (X:=X) (Y:=Y)).
 Proof.
-  move=> R ? ? J.
-  apply/preserves_inf_alt => ?; apply/inf_unique/pw_core' => f /=.
-  rewrite distrib_inf //.
+  apply: lex_alt' => [| A B] f /=; rewrite -/(eval_at f _).
+  - rewrite !distrib_top //.
+  - rewrite !distrib_meet //.
 Qed.
 
 
@@ -114,10 +114,10 @@ Definition point : Type := Prop.
 Instance embed_prop_lex `{Frame X} : Lex (embed_prop (X:=X)).
 Proof.
   apply: lex_alt' => [| A B].
-  - apply: embed_prop_right => -[].
+  - by apply: embed_prop_right.
   - apply: prop_loop => [| ?]; first by apply: meet_proj1.
     apply: prop_loop => [| ?] ; first apply: (inf_lb false).
-    apply: embed_prop_right => -[] //.
+      by apply: embed_prop_right.
 Qed.
 Definition to_point `{Frame X} : Map X point := in_Map embed_prop.
 Instance: Params (@to_point) 7 := {}.
@@ -128,15 +128,15 @@ Proof.
   - rewrite distrib_sup.
     apply: (mono_core esup); apply/pw_core' => ?; apply: distrib_top.
   - split; last by firstorder.
-    move=> H_p; exists H_p => -[].
+    move=> H_p; by exists H_p.
 Qed.
 
 Definition sier : Type := Hom bool Prop.
 Identity Coercion sier_to_Hom : sier >-> Hom.
 Definition characteristic_f `{Frame X} (U : X) (S : sier) : X
   := (embed_prop (S true) ⩕ U) ⩖ embed_prop (S false).
-Arguments characteristic_f {_ _ _ _ _ _ _} U S /.
-Instance: Params (@characteristic_f) 7 := {}.
+Arguments characteristic_f {_ _ _ _ _ _ _ _ _} U S /.
+Instance: Params (@characteristic_f) 9 := {}.
 Lemma characteristic_f_uni `{Frame X} (U : X) (S : sier) (V : X)
   : characteristic_f U S ⊢ V <-> (S true -> U ⊢ V) /\ (S false -> ⊤ ⊢ V).
 Proof.
@@ -176,20 +176,20 @@ Instance characteristic_f_lex `{Frame X} {U : X}
   : Lex (characteristic_f U).
 Proof.
   apply: lex_alt' => [| A B].
-  - apply: join_right2; apply: embed_prop_right => -[].
+  - apply: join_right2; by apply: embed_prop_right.
   - apply/meet_exponential/characteristic_f_uni; split => H_A.
     all: rewrite -meet_exponential l_meet_exponential.
     all: apply/characteristic_f_uni; split => H_B; rewrite -l_meet_exponential.
     + apply: join_right1; apply: meet_right.
-      * apply: embed_prop_right; by case.
+      * by apply: embed_prop_right.
       * apply: meet_proj1.
     + apply: join_right1; apply: meet_right.
-      * apply: embed_prop_right; case=> //=; by apply: (Hom_mono B) H_B.
+      * apply: embed_prop_right; split=> //=; by apply: (Hom_mono B) H_B.
       * apply: meet_proj1.
     + apply: join_right1; apply: meet_right.
-      * apply: embed_prop_right; case=> //=; by apply: (Hom_mono A) H_A.
+      * apply: embed_prop_right; split=> //=; by apply: (Hom_mono A) H_A.
       * apply: meet_proj2.
-    + apply: join_right2; apply: embed_prop_right; by case.
+    + apply: join_right2; by apply: embed_prop_right.
 Qed.
 
 (*
@@ -208,8 +208,8 @@ Qed.
 *)
 Definition characteristic `{Frame X} (U : X) : Map X sier
   := in_Map (characteristic_f U).
-Arguments characteristic {_ _ _ _ _ _ _} U.
-Instance: Params (@characteristic) 7 := {}.
+Arguments characteristic {_ _ _ _ _ _ _ _ _} U.
+Instance: Params (@characteristic) 9 := {}.
 Instance characteristic_mono `{Frame X} : Monotone (characteristic (X:=X)).
 Proof. move=> U V D /= S; rewrite D //. Qed.
 Definition universal_open : sier := in_Hom is_top.
@@ -230,11 +230,10 @@ Proof.
         distrib_join distrib_meet [_ _ universal_open]/= /is_top.
       split.
       * case: b.
-        -- apply join_right1, meet_right => // H_S; exists H_S => -[].
-        -- apply join_right2 => H_S; exists H_S => -[].
-      * apply join_left => [P | [H_S _]].
-        -- move: (P true) (P false) => [? ?] <- //.
-        -- case: b => //; by apply: (Hom_mono S) H_S.
+        -- apply join_right1, meet_right => // H_S; by (exists H_S).
+        -- apply join_right2 => H_S; by (exists H_S).
+      * apply join_left => [[[? ?] <-] | [H_S _]] //.
+        case: b => //; by apply: (Hom_mono S) H_S.
 Qed.
 
 Definition point_of (X : Type) `{Proset X} : Type := Map point X.
@@ -291,6 +290,7 @@ Qed.
 Lemma open_intersection `{Frame X, Finite R} (J : R -> point_set X)
   : (forall r, open (J r)) -> open (inf J).
 Proof.
+  set Has := @unbias_meets X.
   move=> /finite_choice [Neighs E_Neighs].
   apply/open_alt => p /= InAll.
   exists (inf Neighs); split; rewrite distrib_inf; firstorder.
@@ -307,16 +307,15 @@ Proof. unfold as_open; typeclasses eauto. Qed.
 (*
 Instance as_open_reflecting `{Frame X} : Reflecting (as_open (X:=X)).
 *)
-
-Program Instance soberification_suplattice `{Frame X} : SupLattice (soberification X)
-  := fun R J => {| sup := sup (sval ∘ J) ↾ _ |}.
-Next Obligation. move=> *; apply: open_union => r /=; apply: proj2_sig. Qed.
-Next Obligation. move=> *; apply/(reflecting_strong_reflects_sup (F:=sval))/is_sup. Qed.
-Program Instance soberification_meet_semilattice `{Frame X}
-  : MeetSemilattice (soberification X)
-  := fun R _ _ J => {| inf := inf (sval ∘ J) ↾ _ |}.
-Next Obligation. move=> *; apply: open_intersection => r /=; apply: proj2_sig. Qed.
-Next Obligation. move=> *; apply/(reflecting_strong_reflects_inf (F:=sval))/is_inf. Qed.
+Instance open_sup_closed `{Frame X} {R} {J : R -> soberification X} : SupClosed J
+  := sup_closed_of_shape _ _ open_union _.
+Instance open_inf_closed `{Frame X, Finite R} {J : R -> soberification X} : InfClosed J
+  := inf_closed_of_shape _ _ open_intersection _.
+Instance soberification_suplattice `{Frame X} : SupLattice (soberification X)
+  := fun R J => sig_sup.
+Program Instance soberification_meet_semilattice `{Frame X, Finite R}
+  : DInfsOfShape R (soberification X)
+  := fun J => sig_inf.
 (*
 Program Instance soberification_exponents `{Frame X} : Exponents (soberification X)
   := {| exponential U V := points_in (frame_interior U ⟿ frame_interior V) |}.
@@ -423,7 +422,7 @@ Qed.
 Instance saturate_lex `{Prosite X} : Lex (saturate (X:=X)).
 Proof.
   apply: lex_alt' => [| U V].
-  - move=> u /= _ [[[? ?] ?] /= /(_ u)]; apply=> -[].
+  - move=> u /= _ [[[? ?] ?] /= /(_ u)]; by apply.
   - apply/meet_exponential/transpose/meet_exponential.
     apply/l_meet_exponential; rewrite sat_exp_inv; apply: (mono sval).
     apply/transpose/l_meet_exponential/(adj_unit saturate_reflection).
@@ -718,27 +717,27 @@ Coercion ap_filter : filter_in >-> Hom.
 Instance ap_filter_bi `{Proset X} : Bimonotone (ap_filter (X:=X)).
 Proof. move=> [[F ?] ?] [[G ?] ?] /= D ? ? -> //. Qed.
 
-Lemma filter_iff_lex `{Proset X, !MeetSemilattice X} (P : Hom X Prop)
+Lemma filter_iff_lex `{MeetSemilattice X} (P : Hom X Prop)
   : is_filter P <-> Lex P.
 Proof.
+  set Has := @unbias_meets X.
   split.
-  - move=> [? _]; apply: lex_alt => J; apply: distrib_inf_sufficient.
-    + case: (codirect (of_void (sig P))) => x ? _.
-      rewrite -inf_right => // -[].
-    + move=> H_b; pose J' b := J b ↾ H_b b.
-      rewrite -(_ : ` (codirect J') ⊢ inf J) //.
-      * case: (codirect _) => //.
-      * apply: inf_right => b; apply: (codirect_is_lb J').
+  - move=> [? _] R ? ? J.
+    apply: distrib_inf_sufficient.
+    move=> H_b; pose J' b := J b ↾ H_b b.
+    rewrite -(_ : ` (codirect J') ⊢ inf J) //.
+    * apply: proj2_sig.
+    * apply: inf_right => b; apply: (codirect_is_lb J').
   - move=> ?; (exists) => //.
     unshelve refine {| codirect R _ _ J := inf (sval ∘ J) ↾ _ |}; last first.
-    + move=> R ? ? J r; apply: (reflect sval); rewrite /= inf_lb //=.
+    + move=> *; apply: inf_lb.
     + rewrite (distrib_inf (sval ∘ J)) => r' /=; case: (J r') => //.
 Qed.
 
 Lemma improper_is_filter `{Codirected X} : is_filter (top (Hom X Prop)).
 Proof.
   exists => //; unshelve refine {| codirect R _ _ J := codirect (sval ∘ J) ↾ _ |}.
-  - move=> [].
+  - done.
   - move=> * ?; apply: codirect_is_lb.
 Qed.
 
@@ -812,7 +811,7 @@ Definition hyper (T X : Type) `{Directed T, Proset X} := stalk (net T X) imprope
 Program Definition formal_limit `{Directed T, Proset X} (n : T -> X)
   : hyper T X
   := germ_at (P:=net T X) (U:=codirect (of_void _)) improper _ n.
-Next Obligation. move=> * []. Qed.
+Next Obligation. done. Qed.
 Next Obligation. move=> * ? ? /= -> //. Qed.
 Arguments formal_limit {_ _ _ _ _ _ _} n /.
 Instance: Params (@formal_limit) 7 := {}.

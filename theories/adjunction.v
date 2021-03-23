@@ -130,37 +130,39 @@ Proof.
   - move=> r; apply/(transpose Adj)/LB.
   - move=> B LB'; apply: reflecting_right_adjoint'; apply: Uni; firstorder.
 Qed.
-(* TODO be more fine-grained? *)
-Definition reflective_dsups {R}
-           `{Adjoint X Y F G, !Monotone F, !Monotone G, !Reflecting G,
-             !DSupsOfShape R X}
-  : DSupsOfShape R Y
-  := fun J => {| sup := F (sup (G ∘ J));
-              is_sup := reflecting_right_adjoint_lub (is_sup (G ∘ J)) |}.
-Definition reflective_dinfs {R}
-           `{Adjoint X Y F G, !Monotone F, !Monotone G, !Reflecting G,
-             !DInfsOfShape R X}
-  : DInfsOfShape R Y
-  := fun J => {| inf := F (inf (G ∘ J));
-              is_inf := reflecting_right_adjoint_glb (is_inf (G ∘ J)) |}.
-(*
-Definition reflective_inflattice
-           `{Adjoint X Y F G, !Monotone F, !Montone G, !Reflecting G, !SupLattice X}
-  : InfLattice Y
-  := @sups_sufficient Y _ (reflective_suplattice (F:=F) (G:=G)).
-*)
-Definition coreflective_dinfs {R}
-           `{Adjoint Y X F G, !Monotone F, !Monotone G, !Reflecting F,
-             !DInfsOfShape R X}
-  : DInfsOfShape R Y
-  := fun J => {| inf := G (inf (F ∘ J));
-              is_inf := reflecting_left_adjoint_glb (is_inf (F ∘ J)) |}.
-Definition coreflective_dsups {R}
-           `{Adjoint Y X F G, !Monotone F, !Monotone G, !Reflecting F,
-             !DSupsOfShape R X}
-  : DSupsOfShape R Y
-  := fun J => {| sup := G (sup (F ∘ J));
-              is_sup := reflecting_left_adjoint_lub (is_sup (F ∘ J)) |}.
+(* TODO handle non-discrete infs/sups? *)
+Definition reflective_dsup
+           `{Adjoint X Y F G, !Monotone F, !Monotone G, !Reflecting G}
+           {R} (J : R -> Y) `{!HasSup (G ∘ J)}
+  : HasSup J
+  := {| sup := F (sup (G ∘ J));
+        is_sup := reflecting_right_adjoint_lub (is_sup (G ∘ J)) |}.
+Definition reflective_dinf
+           `{Adjoint X Y F G, !Monotone F, !Monotone G, !Reflecting G}
+           {R} (J : R -> Y) `{!HasInf (G ∘ J)}
+  : HasInf J
+  := {| inf := F (inf (G ∘ J));
+        is_inf := reflecting_right_adjoint_glb (is_inf (G ∘ J)) |}.
+Definition coreflective_dinf
+           `{Adjoint Y X F G, !Monotone F, !Monotone G, !Reflecting F}
+           {R} (J : R -> Y) `{!HasInf (F ∘ J)}
+  : HasInf J
+  := {| inf := G (inf (F ∘ J));
+        is_inf := reflecting_left_adjoint_glb (is_inf (F ∘ J)) |}.
+Definition coreflective_dsup
+           `{Adjoint Y X F G, !Monotone F, !Monotone G, !Reflecting F}
+           {R} (J : R -> Y) `{!HasSup (F ∘ J)}
+  : HasSup J
+  := {| sup := G (sup (F ∘ J));
+        is_sup := reflecting_left_adjoint_lub (is_sup (F ∘ J)) |}.
+(* Even if X is complete, *this is still the instance we want*, because we want
+   to compute infs/sups in Y using different definitions according to the index set,
+   in whichever way X does. If we just gave Y a complete lattice instance based on
+   X's complete lattice instance, then binary meets, say, would end up being
+   computed by means of X's complete lattice instance instead of any higher-priority
+   instance it might have for bool-indexed infs. *)
+Notation InheritsDInfs X Y := (forall {R}, DInfsOfShape R X -> DInfsOfShape R Y).
+Notation InheritsDSups X Y := (forall {R}, DSupsOfShape R X -> DSupsOfShape R Y).
 
 (* TOO Comma prosets? *)
 Definition universal_left_adjoint `{Proset X, Proset Y, !InfLattice Y}
@@ -406,6 +408,22 @@ Next Obligation.
 Qed.
 Arguments universal_ran {_ _ _ _ _ _ _ _} p F /.
 Instance: Params (@universal_ran) 8 := {}.
+Instance universal_lan_di {X} `{Proset X', Proset Y, !SupLattice Y}
+  : Dimonotone (universal_lan (X:=X) (X':=X') (Y:=Y)).
+Proof.
+  move=> p p' D_p F F' D_F A /=.
+  apply: sup_left => -[A0 /= D]. apply: (sup_right (A0 ↾ _)).
+  - rewrite D_p //.
+  - firstorder.
+Qed.
+Instance universal_ran_di {X} `{Proset X', Proset Y, !InfLattice Y}
+  : Dimonotone (universal_ran (X:=X) (X':=X') (Y:=Y)).
+Proof.
+  move=> p p' D_p F F' D_F A /=.
+  apply: inf_right => -[A0 /= D]. apply: (inf_left (A0 ↾ _)).
+  - rewrite -D_p //.
+  - firstorder.
+Qed.
 Lemma universal_lan_global_lan `{Proset X, Proset X', Proset Y, !SupLattice Y}
       {p : X -> X'} `{!Monotone p}
   : global_lan (Y:=Y) p (universal_lan p).
