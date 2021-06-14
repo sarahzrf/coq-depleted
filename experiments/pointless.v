@@ -1,6 +1,8 @@
 From Coq Require Import ssreflect ssrfun ssrbool.
-Require Import stdpp.tactics.
+From Coq Require Import QArith.
 Require Import stdpp.finite.
+Require Import stdpp.tactics.
+Require Import Lqa.
 
 Require Import depleted.proset.
 Require Import depleted.bounds.
@@ -44,7 +46,7 @@ Definition preimage (X Y : Type) `{Proset X, Proset Y} : Map X Y -> Y -> X
   := sval.
 Arguments preimage {_ _ _ _ _ _} !_.
 Instance: Params (@preimage) 6 := {}.
-Notation "f ⁻¹" := (preimage f) (at level 1, format "f ⁻¹").
+Notation "f ⁻¹" := (preimage f) (at level 1, format "f ⁻¹") : proset_scope.
 Instance preimage_bi `{Proset X, Proset Y} : Bimonotone (preimage (X:=X) (Y:=Y)).
 Proof. move=> [F ?] [G ?] /= D ? ? -> //. Qed.
 Instance Map_fmp `{Proset X, Proset Y} (F : Map X Y)
@@ -325,6 +327,10 @@ Next Obligation. firstorder. Qed.
 
 Definition subset (X : Type) `{Proset X} : Type := Hom (core X) Prop.
 Identity Coercion subset_to_Hom : subset >-> Hom.
+Program Definition sing `{Proset X} (x : X) : subset X := fun y : X => y ⟛ x.
+Next Obligation. compute. firstorder. Qed.
+Arguments sing {_ _ _} x.
+Instance: Params (@sing) 3 := {}.
 Definition refines `{Proset X} (U V : core X -> Prop) : Prop
   := forall u : X, U u -> exists v : X, u ⊢ v /\ V v.
 Arguments refines {_ _ _} U V.
@@ -354,12 +360,39 @@ Existing Instance is_coverage.
 Local Arguments all _ /.
 Definition sieve (X : Type) `{Proset X} : Type := Hom (op X) Prop.
 Identity Coercion sieve_to_Hom : sieve >-> Hom.
+Lemma sieve_map `{Proset X} {u v : X} (D : u ⊢ v) (U : sieve X) : U v ⊢ U u.
+Proof. solve_proper. Qed.
 Program Definition sieve_to_subset `{Proset X} (U : sieve X) : subset X
   := ` U ↾ _.
 Next Obligation. move=> ? ? ? U A B [? ?]; by apply: (Hom_mono U). Qed.
 Coercion sieve_to_subset : sieve >-> subset.
-Lemma sieve_map `{Proset X} {u v : X} (D : u ⊢ v) (U : sieve X) : U v ⊢ U u.
-Proof. solve_proper. Qed.
+Instance sieve_to_subset_mono `{Proset X} : Monotone (sieve_to_subset (X:=X)).
+Proof. firstorder. Qed.
+Program Definition sieveify `{Proset X} (U : subset X) : sieve X
+  := fun x : X => exists y : X, U y /\ x ⊢ y.
+Next Obligation.
+  move=> * ? ? D [y [? D']].
+  exists y. by split; last etransitivity.
+Qed.
+Arguments sieveify {_ _ _} U.
+Instance: Params (@sieveify) 3 := {}.
+Instance sieveify_mono `{Proset X} : Monotone (sieveify (X:=X)).
+Proof.
+  move=> U V D u /= [v [? D']].
+  eexists. split; last by etransitivity.
+    by apply: D.
+Qed.
+Instance sieveify_reflection `{Proset X} : sieveify (X:=X) ⊣ sieve_to_subset.
+Proof.
+  constructor=> U v /=.
+  - by (exists v).
+  - move=> [u [? D]]. by apply: sieve_map.
+Qed.
+Program Definition princ `{Proset X} (x : X) : sieve X
+  := fun y : X => y ⊢ x.
+Next Obligation. firstorder. Qed.
+Arguments princ {_ _ _} x.
+Instance: Params (@princ) 3 := {}.
 Definition saturated `{Prosite X} (U : sieve X) : Prop
   := forall (u : X) (V : subset X), covers u V -> (forall v, V v -> U v) -> U u.
 Definition locale_of (X : Type) `{Prosite X} : Type
@@ -429,177 +462,155 @@ Proof.
 Qed.
 
 
-Inductive dyadic := zero_and (d : dyadic) | one | one_and (d : dyadic).
-Instance dyadic_eq_dec : EqDecision dyadic.
-Proof. solve_decision. Defined.
-Inductive dyadic_le : Le dyadic :=
-| dle_zero_and_one d : dyadic_le (zero_and d) one
-| dle_zero_and_one_and d d' : dyadic_le (zero_and d) (one_and d')
-| dle_one_one_and d : dyadic_le one (one_and d)
+Open Scope Q.
+Instance Q_le : Le Q := Qle.
+Instance Q_proset : Proset Q := Build_PreOrder _ Qle_refl Qle_trans.
+Notation "(<)" := Qlt (only parsing) : Q_scope.
+Definition Q_le_def q q' : q ⊢ q' = Qle q q' := erefl.
+(* Definition Qc_strict : Qc -> Qc -> Prop := strict pro_le.
+Notation "q < q'" := (strict (pro_le (X:=Qc)) q q').
+Notation "(<)" := (strict (pro_le (X:=Qc))) (only parsing).
+Lemma Qclt_alt' q q' : (q < q')%Qc <-> q < q'.
+Proof.
+  rewrite strict_spec_alt Qclt_alt [_ ⊢ _]Qcle_alt Qceq_alt.
+  case: (q ?= q')%Qc; dintuition.
+Qed.
+*)
+(*
+Lemma Qcle_alt' q q' : q ⊢ q' <-> (q < q')%Qc \/ q = q'.
+Proof.
+  rewrite Qclt_alt [_ ⊢ _]Qcle_alt Qceq_alt.
+  case: (q ?= q')%Qc; dintuition.
+Qed.
+Lemma Qclt_alt2 q q' : (q < q')%Qc <-> ~q' ⊢ q.
+Proof.
+  rewrite Qclt_alt'. split.
+  - firstorder.
+  - apply: total_not_strict.
+Qed.
+Lemma Qcle_alt2 q q' : q ⊢ q' <-> ~(q' < q)%Qc.
+Proof. rewrite Qclt_alt2. firstorder. Qed.
 
-| dle_zero_and d d' : dyadic_le d d' -> dyadic_le (zero_and d) (zero_and d')
-| dle_one : dyadic_le one one
-| dle_one_and d d' : dyadic_le d d' -> dyadic_le (one_and d) (one_and d').
-Hint Constructors dyadic_le.
-Existing Instance dyadic_le.
-Instance dyadic_proset : Proset dyadic.
+Instance Qc_trichT : TrichotomyT (<).
 Proof.
-  constructor.
-  - elim; firstorder.
-  - elim=> [d1 IH1 | | d1 IH1] ? ?; do 2 inversion_clear 1; firstorder.
-Qed.
-Inductive dyadic_lt : dyadic -> dyadic -> Prop :=
-| dlt_zero_and_one d : dyadic_lt (zero_and d) one
-| dlt_zero_and_one_and d d' : dyadic_lt (zero_and d) (one_and d')
-| dlt_one_one_and d : dyadic_lt one (one_and d)
-
-| dlt_zero_and d d' : dyadic_lt d d' -> dyadic_lt (zero_and d) (zero_and d')
-| dlt_one_and d d' : dyadic_lt d d' -> dyadic_lt (one_and d) (one_and d').
-Hint Constructors dyadic_lt.
-Lemma dyadic_lt_alt1 d d' : dyadic_lt d d' <-> d ⊢ d' /\ d <> d'.
-Proof.
-  split.
-  - elim: d d' /; unfold pro_le; firstorder.
-  - move=> []; elim: d d' /; firstorder.
-Qed.
-Lemma dyadic_le_alt1 d d' : d ⊢ d' <-> dyadic_lt d d' \/ d = d'.
-Proof.
-  rewrite dyadic_lt_alt1; suff : d = d' \/ d <> d' by naive_solver.
-  decide equality.
-Qed.
-Lemma dyadic_lt_alt2 d d' : dyadic_lt d d' <-> ~d' ⊢ d.
-Proof.
-  split.
-  - elim: d d' / => *; inversion 1; firstorder.
-  - unfold pro_le.
-    elim: d d' => [d IH | | d IH] [d' | | d'] NLe;
-      constructor || contradict NLe; auto.
-Qed.
-Lemma dyadic_le_alt2 d d' : d ⊢ d' <-> ~dyadic_lt d' d.
-Proof.
-  split.
-  - elim: d d' / => *; inversion 1; firstorder.
-  - unfold pro_le.
-    elim: d d' => [d IH | | d IH] [d' | | d'] NL;
-      constructor || contradict NL; auto.
-Qed.
-Lemma weaken_dyadic_lt d d' : dyadic_lt d d' -> d ⊢ d'.
-Proof. firstorder using dyadic_le_alt1. Qed.
-
-Instance dyadic_trichT : TrichotomyT dyadic_lt.
-Proof.
-  elim=> [d IH | | d IH] [d' | | d']; auto; case: (IH d') => [[| ->] |]; auto.
+  move=> q q'. case E: (q ?= q')%Qc.
+  - left. right. by apply/Qceq_alt.
+  - left. left. by apply/Qclt_alt'/Qclt_alt.
+  - right. by apply/Qclt_alt'/Qcgt_alt.
 Defined.
-Lemma dyadic_total (d d' : dyadic) : {d ⊢ d'} + {d' ⊢ d}.
+*)
+Instance Q_dec : RelDecision (pro_le (X:=Q)).
 Proof.
-  case: (trichotomyT dyadic_lt d d') =>
-    [[/weaken_dyadic_lt | <-] | /weaken_dyadic_lt ]; by constructor.
+  move=> q q'. unfold Decision.
+  case E: (q ?= q') (Qle_alt q q'); dintuition.
 Defined.
-Instance dyadic_antisymm : AntiSymm (=) (pro_le (X:=dyadic)).
+Instance Qlt_dec : RelDecision Qlt.
 Proof.
-  move=> d d' Le1 Le2.
-  case: (trichotomyT dyadic_lt d d') => [[|] |] // /dyadic_lt_alt2 //.
-Qed.
-Instance dyadic_lt_trans : Transitive dyadic_lt.
-Proof.
-  move=> ? ? ? /dyadic_lt_alt1 [D1 E1] /dyadic_lt_alt1 [D2 E2].
-  apply/dyadic_lt_alt1; split; first by etransitivity.
-  contradict E1; apply: anti_symm; firstorder.
-Qed.
-Instance dyadic_lt_irreflexive : Irreflexive dyadic_lt.
-Proof. move=> ? /dyadic_lt_alt2 //. Qed.
-Instance dyadic_lt_di : Dimonotone dyadic_lt.
-Proof.
-  move=> ? ? /= D1 ? ? D2 /dyadic_lt_alt1 [D3 NE].
-  apply/dyadic_lt_alt2; contradict NE; apply: anti_symm.
-  - rewrite D3 //.
-  - rewrite D2 NE //.
-Qed.
-Instance dyadic_lt_dec : RelDecision dyadic_lt.
-Proof.
-  move=> d d'; case: (trichotomyT dyadic_lt d d') => [[|] |].
-  - by constructor.
-  - right; apply/dyadic_lt_alt1; tauto.
-  - move=> /dyadic_lt_alt2; right; apply/dyadic_lt_alt1; tauto.
+  move=> q q'. unfold Decision.
+  case E: (q ?= q') (Qlt_alt q q'); dintuition.
 Defined.
-Instance dyadic_le_dec : RelDecision (pro_le (X:=dyadic)).
-Proof.
-  move=> d d'; case: (trichotomyT dyadic_lt d d') =>
-    [[/dyadic_lt_alt1 [*] | ->] | /dyadic_lt_alt2]; by constructor.
+Instance Qlt_di : Dimonotone (<)%Q.
+Proof. compute -[Qle Qlt] => *. lra. Qed.
+Instance Qlt_transitive : Transitive Qlt := Qlt_trans.
+Definition Q_total (q q' : Q) : {q ⊢ q'} + {q' ⊢ q}.
+  case: (Qlt_le_dec q q'); dintuition.
 Defined.
+  
+Program Instance Q_binmeets : BinMeets Q
+  := fun J => {| inf := if Q_total (J true) (J false) then J true else J false |}.
+Next Obligation. move=> J; case: Q_total => Le /=; split=> [[] | ?] //. Qed.
+Program Instance Q_binjoins : BinJoins Q
+  := fun J => {| sup := if Q_total (J true) (J false) then J false else J true |}.
+Next Obligation. move=> J; case: Q_total => Le /=; split=> [[] | ?] //. Qed.
 
-Program Instance dyadic_binmeets : BinMeets dyadic
-  := fun J => {| inf := if dyadic_total (J true) (J false) then J true else J false |}.
-Next Obligation. move=> J; case: dyadic_total => Le /=; split=> [[] | ?] //. Qed.
-Program Instance dyadic_binjoins : BinJoins dyadic
-  := fun J => {| sup := if dyadic_total (J true) (J false) then J false else J true |}.
-Next Obligation. move=> J; case: dyadic_total => Le /=; split=> [[] | ?] //. Qed.
-
-Definition dyadic_ball : Type := {p : op dyadic * dyadic | dyadic_lt p.1 p.2}.
-Definition in_ball (B : dyadic_ball) (d : dyadic) : Prop
-  := dyadic_lt (`B).1 d /\ dyadic_lt d (`B).2.
-Arguments in_ball B d /.
-Lemma dyadic_endless_down d : dyadic_lt (zero_and d) d.
-Proof. elim: d; auto. Qed.
-Lemma dyadic_endless_up d : dyadic_lt d (one_and d).
-Proof. elim: d; auto. Qed.
-Hint Resolve dyadic_endless_down dyadic_endless_up.
-Lemma dyadic_dense (B : dyadic_ball) : exists d, in_ball B d.
+Definition Q_ball : Type := {p : op Q * Q | p.1 < p.2}.
+Notation lo_end B := (`B).1.
+Notation hi_end B := (`B).2.
+Lemma lo_lt_hi (B : Q_ball) : lo_end B < hi_end B.
+Proof. case: B => //. Qed.
+Hint Resolve lo_lt_hi.
+Program Definition in_ball (B : Q_ball) : subset Q
+  := fun q => lo_end B < q /\ q < hi_end B.
+Next Obligation. compute -[Qle Qlt] => *. lra. Qed.
+Arguments in_ball !B /.
+Definition width (B : Q_ball) : Q := hi_end B - lo_end B.
+Arguments width !B /.
+Definition radius (B : Q_ball) : Q := width B / 2.
+Arguments radius !B /.
+Definition center (B : Q_ball) : Q := lo_end B + radius B.
+Arguments center !B /.
+Lemma width_pos B : 0 < width B.
+Proof. case: B => [[B_l B_h]] /= L. lra. Qed.
+Lemma radius_pos B : 0 < radius B.
+Proof. apply: Qlt_shift_div_l; [lra | apply: width_pos]. Qed.
+Lemma radius_lt_width B : radius B < width B.
+Proof. move: (width_pos B) => ?. apply: Qlt_shift_div_r; lra. Qed.
+Lemma center_in (B : Q_ball) : in_ball B (center B).
 Proof.
-  case: B => [[B_l B_h]] /=.
-  elim: B_l B_h /; firstorder eauto.
+  move: (radius_pos B) (radius_lt_width B).
+  case: B => [[B_l B_h]] /= L.
+  lra.
 Qed.
+Lemma Q_endless_down q : (q - 1 < q)%Q.
+Proof. lra. Qed.
+Lemma Q_endless_up q : (q < q + 1)%Q.
+Proof. lra. Qed.
+Hint Resolve Q_endless_down Q_endless_up.
 Instance in_ball_mono : Monotone in_ball.
-Proof.
-  move=> [[B_in_l B_in_h] /= L_in] [[B_out_l B_out_h] /= L_out]
-    [/op_def D1 D2] d /= [D'1 D'2]; split.
-  - rewrite D1 //.
-  - rewrite -D2 //.
-Qed.
+Proof. compute -[Qle Qlt] => *. lra. Qed.
 Instance in_ball_reflect : Reflecting in_ball.
 Proof.
-  move=> B1 B2 D.
-  case: (dyadic_dense B1) => b In1; move: (In1) => /D In2.
+  move=> B1 B2 D. move: (center B1) (center_in B1) (D _ (center_in B1)) => c In1 In2.
   move: B1 B2 D In1 In2 => [[B_in_l B_in_h] /= L_in] [[B_out_l B_out_h] /= L_out]
     D [L_in_l L_in_h] [L_out_l L_out_h].
-  compute in D; split; first apply/op_def.
-  - apply/dyadic_le_alt2 => L.
-    case: (D B_out_l).
-    + by split; last etransitivity.
-    + move=> /(irreflexivity dyadic_lt _) //.
-  - apply/dyadic_le_alt2 => L.
-    case: (D B_out_h).
-    + by split; first etransitivity.
-    + move=> _ /(irreflexivity dyadic_lt _) //.
+  split; apply: Qnot_lt_le => L.
+  - case: (D B_out_l); lra.
+  - case: (D B_out_h); lra.
 Qed.
-Definition dyadic_cov (B : dyadic_ball) (V : subset dyadic_ball) : Prop
-  (* := in_ball B ⟛ Sup B' : {B' | V B'}, in_ball (`B'). *)
-  := forall d, in_ball B d <-> exists B', V B' /\ in_ball B' d.
-(*
-Program Instance dyadic_coverage : Coverage dyadic_cov
-  := {| shrink_cov u u' D V Cov (v' : dyadic_ball)
-        := v' ⊢ u' /\ exists v, V v /\ v' ⊢ v |}.
-Next Obligation.
-  move=> u V v Cov In_V.
-  apply: (reflect in_ball) => d ?.
-  apply/Cov; eauto.
-Qed.
-Next Obligation.
-  move=> _ u' _ V _ v v' [D1 D2] [D [v'' [? ?]]]; split; first by etransitivity.
-  exists v''; by split; last etransitivity.
-Qed.
-Next Obligation.
-  move=> u u' D V Cov d; split.
-  - move=> In; exists u'; do 2 split=> //.
-    move: (In) => /(in_ball_mono _ _ D) /Cov. (mono in_ball D d In). move/(mono in_ball D d) in In.
-    move: In. rewrite D.
-    rewrite D in In.
-    simpl.
-Qed.
-Instance dyadic_ball_prosite : Prosite dyadic_ball := {| covers := dyadic_cov |}.
 
-Definition continuum : Type := locale_of dyadic_ball.
-*)
+Definition Q_cov (B : Q_ball) (V : subset Q_ball) : Prop
+  := in_ball B ⟛ Sup B' : {B' | V B'}, in_ball (`B').
+  (* := forall q, in_ball B q <-> exists B', V B' /\ in_ball B' q. *)
+Program Instance Q_coverage : Coverage Q_cov
+  := {| shrink_cov u u' D V Cov
+        := princ u' ⩕ sieveify V |}.
+Next Obligation.
+  move=> u V v [Cov1 Cov2] In_V.
+  apply: (reflect in_ball). rewrite -Cov2.
+  apply: (sup_ub (v ↾ In_V)).
+Qed.
+Next Obligation.
+  move=> u u' D V. rewrite /Q_cov => Cov.
+  transitivity (in_ball u' ⩕ in_ball u);
+    last transitivity (in_ball u' ⩕ Sup B' : {B' | V B'}, in_ball (`B')).
+  - split.
+    + rewrite -D. by apply meet_right.
+    + apply: meet_proj1.
+  - by apply: ext.
+  - split.
+    + rewrite l_meet_exponential. apply: sup_left => -[v In_V]. cbn [sval].
+      rewrite -l_meet_exponential => q [[L1 L2] [L3 L4]].
+      set l := get_op (lo_end u') ⩖ get_op (lo_end v).
+      set h := hi_end u' ⩕ hi_end v.
+      have L_lq : l < q by rewrite /l /join /=; case: is_left.
+      have L_qh : q < h by rewrite /h /meet /=; case: is_left.
+      have L_lh : l < h by transitivity q.
+      (unshelve eexists (((l, h) ↾ L_lh) ↾ _)) => //=.
+      split.
+      * split; [apply: join_inj1 | apply: meet_proj1].
+      * eexists. split; first done.
+        split; [apply: join_inj2 | apply: meet_proj2].
+    + apply: sup_left => -[v [D' [v' [In_V D'']]]]. cbn [sval].
+      apply meet_right.
+      * apply (mono in_ball D').
+      * rewrite D''. apply: (sup_ub (v' ↾ In_V)).
+Qed.
+Next Obligation.
+  move=> u u' D V Cov u'' /= [D' [v [In_V D'']]]. eauto.
+Qed.
+Instance Q_ball_prosite : Prosite Q_ball := {| covers := Q_cov |}.
+
+Definition continuum : Type := locale_of Q_ball.
 
 
 Record Presheaf `{Proset X} : Type :=
@@ -829,13 +840,13 @@ Proof. move=> h h' E; split=> -[x E']; exists x; [rewrite -E // | rewrite E //].
 (* special case? *)
 Program Definition seq_tail (X : Type) `{Proset X} : Presheaf (op nat)
   := {| section_on _ := nat -> X;
-        restrict n m H s i := s (i + (n - m)) |}.
+        restrict n m H s i := s (i + (n - m))%nat |}.
 Next Obligation.
   move=> /= ? ? ? ? ?; apply/pw_core' => a; apply/pw_core' => i.
-    by replace (i + _) with i by lia.
+    by replace (i + _)%nat with i by lia.
 Qed.
 Next Obligation.
   move=> /= ? ? ? n m o H1 H2 H3; apply/pw_core' => a; apply/pw_core' => i /=.
-  change (?n ⊢ ?m) with (m <= n) in *.
-    by replace (i + _ + _) with (i + (n - o)) by lia.
+  change (?n ⊢ ?m) with (m <= n)%nat in *.
+    by replace (i + _ + _)%nat with (i + (n - o))%nat by lia.
 Qed.
